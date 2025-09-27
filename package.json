@@ -4,6 +4,7 @@
   "description": "MCP server for Overleaf Git integration",
   "type": "module",
   "main": "overleaf-mcp-server.js",
+  "license": "MIT",
   "scripts": {
     "start": "node overleaf-mcp-server.js"
   },

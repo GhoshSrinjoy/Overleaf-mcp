@@ -350,6 +350,19 @@ Without Redis, the server would work for single-user scenarios but could face ra
 - Use the provided `projects.example.json` as a template
 - Container logs may contain sensitive information - secure appropriately
 
+## Citation
+
+If you use this software in your research, please cite:
+
+```
+@software{overleaf_mcp_2025,
+  author = {GhoshSrinjoy},
+  title = {Overleaf MCP Server},
+  year = {2025},
+  url = {https://github.com/GhoshSrinjoy/Overleaf-mcp}
+}
+```
+
 ## License
 
 MIT License
