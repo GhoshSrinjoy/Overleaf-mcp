@@ -1,0 +1,22 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  mcp:
+    build: .
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PROJECTS_FILE=/app/projects.json
+      - REQUEST_CONCURRENCY=4
+    volumes:
+      - ./projects.json:/app/projects.json:ro
+      - ./data/cache:/app/temp
+    depends_on:
+      - redis
+    restart: unless-stopped
+    stdin_open: true
+    tty: false

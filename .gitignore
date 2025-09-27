@@ -1,0 +1,6 @@
+node_modules/
+temp/
+projects.json
+.env
+data/
+*.log
