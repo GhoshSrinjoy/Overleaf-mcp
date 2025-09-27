@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": {
+      "name": "My Paper",
+      "projectId": "YOUR_PROJECT_ID",
+      "gitToken": "YOUR_GIT_TOKEN"
+    },
+    "project2": {
+      "name": "Another Paper",
+      "projectId": "ANOTHER_PROJECT_ID",
+      "gitToken": "ANOTHER_GIT_TOKEN"
+    }
+  }
+}
