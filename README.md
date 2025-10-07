@@ -1,15 +1,50 @@
-# Overleaf MCP Server
+*“I tried to argue with Overleaf, but it said my syntax was invalid.”*  
 
-An MCP (Model Context Protocol) server that provides access to Overleaf projects via Git integration. This allows Claude and other MCP clients to read LaTeX files, analyze document structure, and extract content from Overleaf projects.
+# Overleaf MCP Server  
 
-## Features
+An MCP (Model Context Protocol) server that gives Claude and other MCP clients access to Overleaf projects through Git integration. It can read LaTeX files, parse structure, and extract content ,  basically letting AI peek under the hood of your papers (ethically, of course). 🧠  
 
-- 📄 **File Management**: List and read files from Overleaf projects
-- 📋 **Document Structure**: Parse LaTeX sections and subsections
-- 🔍 **Content Extraction**: Extract specific sections by title
-- 📊 **Project Summary**: Get overview of project status and structure
-- 🏗️ **Multi-Project Support**: Manage multiple Overleaf projects
-- ⚙️ **Redis Queue**: Dispatch requests through a Redis-backed job queue with per-project locking for safe parallelism
+🔗 **Repo:** https://github.com/GhoshSrinjoy/Overleaf-mcp  
+
+---
+
+## Executive Summary  
+
+This server bridges Overleaf and AI models through MCP. It lets clients list, read, and analyze LaTeX files as if Overleaf were a local workspace.  
+
+Everything’s Git-based, so you get versioned, safe access. A Redis queue manages concurrency, keeping multiple project operations from stepping on each other.  
+
+**In short:** It’s Overleaf → Git → Redis → MCP → Claude (or any client).  
+
+---
+
+## Business Problem  
+
+Overleaf is great for collaboration, but hard to integrate with tools like Claude or LLM-based assistants. You either:  
+- copy-paste LaTeX manually, or  
+- mess with API endpoints and tokens in ways that don’t scale.  
+
+This MCP server makes Overleaf “AI-readable.” It lets LLMs fetch content, inspect sections, and summarize papers without exposing tokens or corrupting repos. Perfect for research groups, AI note-takers, or publishing workflows.  
+
+---
+
+## Methodology  
+
+**How it works**  
+1. Uses Overleaf’s Git integration to clone and sync projects.  
+2. Reads file trees and parses `.tex` documents for sections, subsections, and content.  
+3. Dispatches jobs through a Redis-backed BullMQ queue.  
+4. Each project gets its own Redis lock to prevent race conditions.  
+5. Returns clean structured data through the MCP protocol.  
+
+**Key features**  
+- 📄 File management (list/read Overleaf files)  
+- 📋 Document structure parsing (sections & subsections)  
+- 🔍 Content extraction (get specific section by title)  
+- 📊 Project summary (status, structure overview)  
+- 🏗️ Multi-project support  
+- ⚙️ Redis-backed queue for concurrency safety
+---
 
 ## Installation
 
@@ -363,6 +398,42 @@ If you use this software in your research, please cite:
 }
 ```
 
-## License
+## Skills  
 
+This project touches on: Node.js, Redis (BullMQ), Docker, Overleaf Git integration, file parsing (LaTeX), concurrent job queues, and MCP protocol design.  
+It also demonstrates practical engineering for AI × research integration — building bridges between human writing tools and model understanding. 🧩  
+
+---
+
+## Results & Business Recommendation  
+
+**What it delivers**  
+- Seamless Overleaf access for Claude and other MCP clients.  
+- Structured reading of LaTeX files and sections.  
+- Scalable multi-project handling via Redis queues.  
+- No need to expose Overleaf APIs publicly or store plaintext tokens.  
+
+**Best for:**  
+- Research labs building paper assistants or summarizers.  
+- AI tools integrating academic context.  
+- Developers needing safe, concurrent Overleaf sync.  
+
+**Recommendation:**  
+Use **Docker Compose (Option 2)** for production : it keeps Redis and the MCP server isolated and persistent.  
+For local testing, **Node Direct (Option 1)** is enough.  
+Option 3 (Docker Exec) is great when you want persistent containers and direct control. 🎯  
+
+---
+
+## Next Steps  
+
+🧠 Add smarter section extraction using regex or tree-based parsing.  
+🧵 Add worker scaling for large document sets.  
+🔒 Add encryption for cached repositories.  
+🧩 Extend support for Markdown and BibTeX parsing.  
+📦 Publish a prebuilt Docker image to Docker Hub.  
+🧰 Add CI tests for Redis + lock integrity.  
+🤖 Add optional Claude prompts for “auto-summarize LaTeX sections.”  
+
+---
 MIT License
