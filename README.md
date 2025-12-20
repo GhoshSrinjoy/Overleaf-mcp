@@ -1,4 +1,7 @@
-*“I tried to argue with Overleaf, but it said my syntax was invalid.”*  
+![Overleaf MCP Server](assets/overleaf-mcp.png)
+*Visualizing the bridge between Overleaf and AI through MCP*
+
+*"I tried to argue with Overleaf, but it said my syntax was invalid."*
 
 # Overleaf MCP Server  
 
