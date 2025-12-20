@@ -1,17 +1,53 @@
-# Overleaf MCP Server
+*“I tried to argue with Overleaf, but it said my syntax was invalid.”*  
 
-An MCP (Model Context Protocol) server that provides access to Overleaf projects via Git integration. This allows Claude and other MCP clients to read LaTeX files, analyze document structure, and extract content from Overleaf projects.
+# Overleaf MCP Server  
 
-## Features
+An MCP (Model Context Protocol) server that gives Claude and other MCP clients access to Overleaf projects through Git integration. It can read LaTeX files, parse structure, and extract content ,  basically letting AI peek under the hood of your papers (ethically, of course). 🧠  
 
-- File management: list and read files from Overleaf projects
-- Document structure: parse LaTeX sections and subsections
-- Content extraction: extract specific sections by title
-- Project summary: overview of project status and structure
-- Multi-project support: manage multiple Overleaf projects
-- Redis queue: dispatch requests through a Redis-backed job queue with per-project locking for safe parallelism
-- Git history & diff: inspect commit history and diffs (refs or working tree) with truncation controls
-- Safe edits: write files with optional commit/push, diff previews, and dry-run checks
+🔗 **Repo:** https://github.com/GhoshSrinjoy/Overleaf-mcp  
+
+---
+
+## Executive Summary  
+
+This server bridges Overleaf and AI models through MCP. It lets clients list, read, and analyze LaTeX files as if Overleaf were a local workspace.  
+
+Everything’s Git-based, so you get versioned, safe access. A Redis queue manages concurrency, keeping multiple project operations from stepping on each other.  
+
+**In short:** It’s Overleaf → Git → Redis → MCP → Claude (or any client).  
+
+---
+
+## Business Problem  
+
+Overleaf is great for collaboration, but hard to integrate with tools like Claude or LLM-based assistants. You either:  
+- copy-paste LaTeX manually, or  
+- mess with API endpoints and tokens in ways that don’t scale.  
+
+This MCP server makes Overleaf “AI-readable.” It lets LLMs fetch content, inspect sections, and summarize papers without exposing tokens or corrupting repos. Perfect for research groups, AI note-takers, or publishing workflows.  
+
+---
+
+## Methodology  
+
+**How it works**  
+1. Uses Overleaf’s Git integration to clone and sync projects.  
+2. Reads file trees and parses `.tex` documents for sections, subsections, and content.  
+3. Dispatches jobs through a Redis-backed BullMQ queue.  
+4. Each project gets its own Redis lock to prevent race conditions.  
+5. Returns clean structured data through the MCP protocol.  
+
+**Key features**  
+- 📄 File management (list/read Overleaf files)  
+- 📋 Document structure parsing (sections & subsections)  
+- 🔍 Content extraction (get specific section by title)  
+- 📊 Project summary (status, structure overview)  
+- 🧩 Multi-project support  
+- 🔒 Redis-backed queue for concurrency safety  
+- 🕒 Git history & diff (refs or working tree) with truncation controls  
+- ✏️ Safe edits: write files with optional commit/push, diff previews, and dry-run checks  
+
+---
 
 ## Installation
 
@@ -76,13 +112,6 @@ Key environment variables:
 - `HISTORY_LIMIT_DEFAULT`, `HISTORY_LIMIT_MAX`: Defaults for the `list_history` tool (defaults: 20 and 200).
 - `DIFF_CONTEXT_LINES`, `DIFF_MAX_OUTPUT_CHARS`: Defaults for `get_diff`/`edit_file` previews (defaults: 3 and 120000).
 - `OVERLEAF_GIT_AUTHOR_NAME`, `OVERLEAF_GIT_AUTHOR_EMAIL`: Git author/committer identity required for commits when using `edit_file`.
-
-### Safeguards & limits
-- Per-project Redis locks prevent concurrent git operations from colliding.
-- Diff outputs are truncated by default (`maxOutputChars`, default 120k). Adjust per call as needed.
-- History queries are capped (`limit`, default 20, max 200) to avoid timeouts.
-- `edit_file` supports `dryRun` for size checks and returns a truncated diff preview; commits can skip pushes via `push: false`.
-- All file writes go through path validation to stay inside the repo cache.
 
 ## Claude Desktop Setup
 
@@ -315,6 +344,13 @@ Use get_diff with fromRef: "HEAD~1", toRef: "HEAD", path: "main.tex", contextLin
 Use edit_file with filePath: "sections/intro.tex", content: "<new text>", commitMessage: "Update intro", push: true
 ```
 
+## Safeguards & limits
+- Per-project Redis locks prevent concurrent git operations from colliding.
+- Diff outputs are truncated by default (`maxOutputChars`, default 120k). Adjust per call as needed.
+- History queries are capped (`limit`, default 20, max 200) to avoid timeouts.
+- `edit_file` supports `dryRun` for size checks and returns a truncated diff preview; commits can skip pushes via `push: false`.
+- All file writes go through path validation to stay inside the repo cache.
+
 ## Multi-Project Usage
 
 To work with multiple projects, add them to `projects.json`:
@@ -410,6 +446,42 @@ If you use this software in your research, please cite:
 }
 ```
 
-## License
+## Skills  
 
+This project touches on: Node.js, Redis (BullMQ), Docker, Overleaf Git integration, file parsing (LaTeX), concurrent job queues, and MCP protocol design.  
+It also demonstrates practical engineering for AI × research integration — building bridges between human writing tools and model understanding. 🧩  
+
+---
+
+## Results & Business Recommendation  
+
+**What it delivers**  
+- Seamless Overleaf access for Claude and other MCP clients.  
+- Structured reading of LaTeX files and sections.  
+- Scalable multi-project handling via Redis queues.  
+- No need to expose Overleaf APIs publicly or store plaintext tokens.  
+
+**Best for:**  
+- Research labs building paper assistants or summarizers.  
+- AI tools integrating academic context.  
+- Developers needing safe, concurrent Overleaf sync.  
+
+**Recommendation:**  
+Use **Docker Compose (Option 2)** for production : it keeps Redis and the MCP server isolated and persistent.  
+For local testing, **Node Direct (Option 1)** is enough.  
+Option 3 (Docker Exec) is great when you want persistent containers and direct control. 🎯  
+
+---
+
+## Next Steps  
+
+🧠 Add smarter section extraction using regex or tree-based parsing.  
+🧵 Add worker scaling for large document sets.  
+🔒 Add encryption for cached repositories.  
+🧩 Extend support for Markdown and BibTeX parsing.  
+📦 Publish a prebuilt Docker image to Docker Hub.  
+🧰 Add CI tests for Redis + lock integrity.  
+🤖 Add optional Claude prompts for “auto-summarize LaTeX sections.”  
+
+---
 MIT License
