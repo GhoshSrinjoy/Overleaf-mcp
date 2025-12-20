@@ -39,17 +39,24 @@ class OverleafGitClient {
         this.localPath = path.join(tempDir, projectId);
     }
 
+    async runGit(command, options = {}) {
+        const env = { ...resolveAuthorEnv(), ...(options.env || {}) };
+        const { stdout, stderr } = await execAsync(command, {
+            cwd: options.cwd || this.localPath,
+            env,
+            maxBuffer: options.maxBuffer || 10 * 1024 * 1024,
+        });
+        return { stdout, stderr };
+    }
+
     async cloneOrPull() {
         try {
             await fs.access(this.localPath);
-            await execAsync('git pull', {
-                cwd: this.localPath,
-                env: resolveAuthorEnv(),
-            });
+            await this.runGit('git pull');
         } catch {
             await fs.mkdir(this.tempDir, { recursive: true });
-            await execAsync(`git clone "${this.repoUrl}" "${this.localPath}"`, {
-                env: resolveAuthorEnv(),
+            await this.runGit(`git clone "${this.repoUrl}" "${this.localPath}"`, {
+                cwd: this.tempDir,
             });
         }
     }
@@ -90,67 +97,51 @@ class OverleafGitClient {
 
     async stageChanges(filePath) {
         await this.cloneOrPull();
-        const env = resolveAuthorEnv();
         if (filePath) {
-            await execAsync(`git add "${filePath}"`, {
-                cwd: this.localPath,
-                env,
-            });
+            await this.runGit(`git add "${filePath}"`);
         } else {
-            await execAsync('git add -A', {
-                cwd: this.localPath,
-                env,
-            });
+            await this.runGit('git add -A');
         }
     }
 
     async hasPendingChanges() {
         await this.cloneOrPull();
-        const env = resolveAuthorEnv();
-        const { stdout } = await execAsync('git status --porcelain', {
-            cwd: this.localPath,
-            env,
-        });
+        const { stdout } = await this.runGit('git status --porcelain');
         return stdout.trim().length > 0;
     }
 
-    async commitAndPush(commitMessage = DEFAULT_COMMIT_MESSAGE) {
+    async commitAndPush(
+        commitMessage = DEFAULT_COMMIT_MESSAGE,
+        { push = true, allowEmpty = false, paths = [] } = {},
+    ) {
         await this.cloneOrPull();
-        const env = resolveAuthorEnv();
+        const { stdout } = await this.runGit('git status --porcelain');
 
-        const { stdout } = await execAsync('git status --porcelain', {
-            cwd: this.localPath,
-            env,
-        });
-
-        if (!stdout.trim()) {
+        if (!stdout.trim() && !allowEmpty) {
             return { committed: false, pushed: false };
         }
 
         const safeMessage = commitMessage.replace(/"/g, '\\"');
 
-        await execAsync('git add -A', {
-            cwd: this.localPath,
-            env,
-        });
+        if (paths && paths.length > 0) {
+            await this.runGit(`git add ${paths.map((p) => `"${p}"`).join(' ')}`);
+        } else {
+            await this.runGit('git add -A');
+        }
 
-        await execAsync(`git commit -m "${safeMessage}"`, {
-            cwd: this.localPath,
-            env,
-        });
+        await this.runGit(`git commit -m "${safeMessage}"${allowEmpty ? ' --allow-empty' : ''}`);
 
-        await execAsync('git push', {
-            cwd: this.localPath,
-            env,
-        });
+        if (push) {
+            await this.runGit('git push');
+        }
 
-        return { committed: true, pushed: true };
+        return { committed: true, pushed: push };
     }
 
     async updateFile(filePath, content, commitMessage = DEFAULT_COMMIT_MESSAGE) {
         await this.writeFile(filePath, content);
         await this.stageChanges(filePath);
-        return this.commitAndPush(commitMessage);
+        return this.commitAndPush(commitMessage, { paths: [filePath] });
     }
 
     async getSections(filePath) {
@@ -196,6 +187,46 @@ class OverleafGitClient {
     async getSectionsByType(filePath, type) {
         const sections = await this.getSections(filePath);
         return sections.filter(s => s.type === type);
+    }
+
+    async getLog({ limit = 20, path: logPath, since, until } = {}) {
+        await this.cloneOrPull();
+        const args = [`-n ${Math.max(1, Math.min(limit, 200))}`, '--date=iso-strict', '--pretty=format:%H%x1f%an%x1f%ae%x1f%ad%x1f%s'];
+        if (since) args.push(`--since="${since}"`);
+        if (until) args.push(`--until="${until}"`);
+        const pathPart = logPath ? ` -- "${logPath}"` : '';
+        const { stdout } = await this.runGit(`git log ${args.join(' ')}${pathPart}`);
+        return stdout
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => {
+                const [hash, author, email, date, subject] = line.split('\x1f');
+                return { hash, author, email, date, subject };
+            });
+    }
+
+    async getDiff({ fromRef, toRef, paths = [], contextLines = 3, maxOutputChars = 200000 } = {}) {
+        await this.cloneOrPull();
+        const safeContext = Math.max(0, Math.min(contextLines, 10));
+        const pathArgs = paths.length ? ` -- ${paths.map((p) => `"${p}"`).join(' ')}` : '';
+
+        let diffCmd;
+        if (fromRef && toRef) {
+            diffCmd = `git diff --no-color -U${safeContext} ${fromRef} ${toRef}${pathArgs}`;
+        } else if (fromRef) {
+            diffCmd = `git diff --no-color -U${safeContext} ${fromRef}${pathArgs}`;
+        } else {
+            diffCmd = `git diff --no-color -U${safeContext}${pathArgs}`;
+        }
+
+        const { stdout } = await this.runGit(diffCmd, { maxBuffer: maxOutputChars * 2 });
+        const diff = stdout || '';
+        const truncated = diff.length > maxOutputChars;
+        return {
+            diff: truncated ? diff.slice(0, maxOutputChars) : diff,
+            truncated,
+        };
     }
 }
 

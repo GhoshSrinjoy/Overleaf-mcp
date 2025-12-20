@@ -4,12 +4,14 @@ An MCP (Model Context Protocol) server that provides access to Overleaf projects
 
 ## Features
 
-- 📄 **File Management**: List and read files from Overleaf projects
-- 📋 **Document Structure**: Parse LaTeX sections and subsections
-- 🔍 **Content Extraction**: Extract specific sections by title
-- 📊 **Project Summary**: Get overview of project status and structure
-- 🏗️ **Multi-Project Support**: Manage multiple Overleaf projects
-- ⚙️ **Redis Queue**: Dispatch requests through a Redis-backed job queue with per-project locking for safe parallelism
+- File management: list and read files from Overleaf projects
+- Document structure: parse LaTeX sections and subsections
+- Content extraction: extract specific sections by title
+- Project summary: overview of project status and structure
+- Multi-project support: manage multiple Overleaf projects
+- Redis queue: dispatch requests through a Redis-backed job queue with per-project locking for safe parallelism
+- Git history & diff: inspect commit history and diffs (refs or working tree) with truncation controls
+- Safe edits: write files with optional commit/push, diff previews, and dry-run checks
 
 ## Installation
 
@@ -71,6 +73,16 @@ Key environment variables:
 - `REQUEST_TIMEOUT_MS`: Maximum time the server waits for a job to finish (default: `120000`).
 - `PROJECT_LOCK_TTL_MS`, `PROJECT_LOCK_RETRY_MS`, `PROJECT_LOCK_MAX_WAIT_MS`: Advanced tuning for per-project Redis locks.
 - `OVERLEAF_GIT_TOKEN`, `OVERLEAF_PROJECT_ID`: Optional environment fallbacks if they are not defined in `projects.json` or tool arguments.
+- `HISTORY_LIMIT_DEFAULT`, `HISTORY_LIMIT_MAX`: Defaults for the `list_history` tool (defaults: 20 and 200).
+- `DIFF_CONTEXT_LINES`, `DIFF_MAX_OUTPUT_CHARS`: Defaults for `get_diff`/`edit_file` previews (defaults: 3 and 120000).
+- `OVERLEAF_GIT_AUTHOR_NAME`, `OVERLEAF_GIT_AUTHOR_EMAIL`: Git author/committer identity required for commits when using `edit_file`.
+
+### Safeguards & limits
+- Per-project Redis locks prevent concurrent git operations from colliding.
+- Diff outputs are truncated by default (`maxOutputChars`, default 120k). Adjust per call as needed.
+- History queries are capped (`limit`, default 20, max 200) to avoid timeouts.
+- `edit_file` supports `dryRun` for size checks and returns a truncated diff preview; commits can skip pushes via `push: false`.
+- All file writes go through path validation to stay inside the repo cache.
 
 ## Claude Desktop Setup
 
@@ -245,6 +257,32 @@ Get content of a specific section.
 - `sectionTitle`: Title of the section (required)
 - `projectName`: Project identifier (optional)
 
+### `list_history`
+Show recent git commits.
+- `limit`: Maximum commits to return (default 20, max 200)
+- `path`: Optional path filter
+- `since` / `until`: git log time filters (e.g., `2.weeks`, `2025-01-01`)
+- `projectName`: Project identifier (optional)
+
+### `get_diff`
+Get a git diff between refs or the working tree.
+- `fromRef`: Base ref (omit to diff working tree vs HEAD)
+- `toRef`: Target ref (omit to use working tree)
+- `path` / `paths`: Optional path filters
+- `contextLines`: Unified diff context lines (0-10, default 3)
+- `maxOutputChars`: Truncate diff to this many characters (default 120000)
+- `projectName`: Project identifier (optional)
+
+### `edit_file`
+Write a file and optionally commit/push the change.
+- `filePath`: Target file path (required)
+- `content`: New file content (required)
+- `commitMessage`: Commit message (default: "Update via Overleaf MCP")
+- `push`: Whether to push after committing (default: true)
+- `dryRun`: If true, report sizes only; do not write or commit
+- `contextLines` / `maxPreviewChars`: Diff preview controls
+- `projectName`: Project identifier (optional)
+
 ### `status_summary`
 Get a comprehensive project status summary.
 - `projectName`: Project identifier (optional)
@@ -266,6 +304,15 @@ Use get_section_content with filePath: "main.tex" and sectionTitle: "Introductio
 
 # List all sections in a file
 Use get_sections with filePath: "main.tex"
+
+# Show last 10 commits
+Use list_history with limit: 10
+
+# Show diff between HEAD and previous commit for main.tex
+Use get_diff with fromRef: "HEAD~1", toRef: "HEAD", path: "main.tex", contextLines: 5
+
+# Edit and push a file
+Use edit_file with filePath: "sections/intro.tex", content: "<new text>", commitMessage: "Update intro", push: true
 ```
 
 ## Multi-Project Usage

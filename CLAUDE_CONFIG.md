@@ -1,13 +1,14 @@
 # Claude MCP Client Configuration
 
-Add the following entry to your MCP client configuration (for Claude Desktop, edit `claude_desktop_config.json`):
+Add the following entry to your MCP client configuration (for Claude Desktop, edit `claude_desktop_config.json`). Set `cwd` to your clone path so `docker compose` picks up the included `projects.json` and env defaults (including Git author identity for commits):
 
 ```json
 {
   "mcpServers": {
     "overleaf": {
       "command": "docker",
-      "args": ["compose", "run", "--rm", "-T", "mcp"]
+      "args": ["compose", "run", "--rm", "-T", "mcp"],
+      "cwd": "D:\\\\src\\\\overleaf_mcp"
     }
   }
 }

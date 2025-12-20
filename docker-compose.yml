@@ -12,6 +12,8 @@ services:
       - REDIS_PORT=6379
       - PROJECTS_FILE=/app/projects.json
       - REQUEST_CONCURRENCY=4
+      - OVERLEAF_GIT_AUTHOR_NAME=Srinjoy Ghosh
+      - OVERLEAF_GIT_AUTHOR_EMAIL=srinjoy.ghosh@fau.de
     volumes:
       - ./projects.json:/app/projects.json:ro
       - ./data/cache:/app/temp

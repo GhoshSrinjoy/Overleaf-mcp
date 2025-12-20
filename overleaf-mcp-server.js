@@ -36,6 +36,13 @@ const PROJECT_LOCK_MAX_WAIT_MS = Number.parseInt(
   process.env.PROJECT_LOCK_MAX_WAIT_MS || String(DEFAULT_TIMEOUT_MS),
   10,
 ) || DEFAULT_TIMEOUT_MS;
+const DEFAULT_HISTORY_LIMIT = Math.max(1, Number.parseInt(process.env.HISTORY_LIMIT_DEFAULT || '20', 10) || 20);
+const MAX_HISTORY_LIMIT = Math.max(DEFAULT_HISTORY_LIMIT, Number.parseInt(process.env.HISTORY_LIMIT_MAX || '200', 10) || 200);
+const DEFAULT_DIFF_CONTEXT = Math.max(0, Number.parseInt(process.env.DIFF_CONTEXT_LINES || '3', 10) || 3);
+const DEFAULT_DIFF_MAX_CHARS = Math.max(
+  2000,
+  Number.parseInt(process.env.DIFF_MAX_OUTPUT_CHARS || '120000', 10) || 120000,
+);
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -255,6 +262,155 @@ async function executeTool(name, args = {}) {
       });
     }
 
+    case 'list_history': {
+      const { client, projectLabel, projectId } = resolveProjectContext(args);
+      return withProjectLock(projectId, async () => {
+        const limit = Math.min(
+          MAX_HISTORY_LIMIT,
+          Math.max(1, Number.parseInt(args.limit || DEFAULT_HISTORY_LIMIT, 10) || DEFAULT_HISTORY_LIMIT),
+        );
+        const logEntries = await client.getLog({
+          limit,
+          path: args.path,
+          since: args.since,
+          until: args.until,
+        });
+
+        const summary = logEntries
+          .map(
+            (entry, i) => `${i + 1}. ${entry.hash.slice(0, 8)} | ${entry.date} | ${entry.author} | ${entry.subject}`,
+          )
+          .join('\n');
+
+        return {
+          content: [{
+            type: 'text',
+            text: `${projectLabel} history (latest ${logEntries.length}/${limit}):\n\n${summary || 'No commits found'}`,
+          }],
+        };
+      });
+    }
+
+    case 'get_diff': {
+      const { client, projectLabel, projectId } = resolveProjectContext(args);
+      return withProjectLock(projectId, async () => {
+        const contextLines = Math.max(
+          0,
+          Math.min(10, Number.parseInt(args.contextLines || DEFAULT_DIFF_CONTEXT, 10) || DEFAULT_DIFF_CONTEXT),
+        );
+        const maxOutputChars = Math.max(
+          2000,
+          Math.min(
+            500000,
+            Number.parseInt(args.maxOutputChars || DEFAULT_DIFF_MAX_CHARS, 10) || DEFAULT_DIFF_MAX_CHARS,
+          ),
+        );
+        const paths = [];
+        if (args.path) {
+          paths.push(args.path);
+        }
+        if (Array.isArray(args.paths)) {
+          args.paths.forEach((p) => {
+            if (typeof p === 'string' && p.trim().length > 0) {
+              paths.push(p.trim());
+            }
+          });
+        }
+
+        const { diff, truncated } = await client.getDiff({
+          fromRef: args.fromRef,
+          toRef: args.toRef,
+          paths,
+          contextLines,
+          maxOutputChars,
+        });
+
+        const header = [
+          `Diff for ${projectLabel}`,
+          args.fromRef || args.toRef ? `Refs: ${args.fromRef || 'WORKTREE'} -> ${args.toRef || 'WORKTREE'}` : 'Refs: WORKTREE',
+          paths.length ? `Paths: ${paths.join(', ')}` : 'Paths: all',
+          `Context lines: ${contextLines}`,
+          truncated ? `Output truncated to ${maxOutputChars} characters` : 'Output not truncated',
+        ].join('\n');
+
+        return {
+          content: [{
+            type: 'text',
+            text: `${header}\n\n${diff || '(no diff)'}${truncated ? '\n\n[diff truncated]' : ''}`,
+          }],
+        };
+      });
+    }
+
+    case 'edit_file': {
+      if (!args.filePath) {
+        throw new Error('filePath is required');
+      }
+      if (typeof args.content !== 'string') {
+        throw new Error('content is required and must be a string');
+      }
+
+      const commitMessage = args.commitMessage || 'Update via Overleaf MCP';
+      const push = args.push !== false;
+      const dryRun = args.dryRun === true;
+      const contextLines = Math.max(
+        0,
+        Math.min(10, Number.parseInt(args.contextLines || DEFAULT_DIFF_CONTEXT, 10) || DEFAULT_DIFF_CONTEXT),
+      );
+      const maxPreviewChars = Math.max(
+        2000,
+        Math.min(
+          120000,
+          Number.parseInt(args.maxPreviewChars || DEFAULT_DIFF_MAX_CHARS, 10) || DEFAULT_DIFF_MAX_CHARS,
+        ),
+      );
+
+      const { client, projectLabel, projectId } = resolveProjectContext(args);
+
+      return withProjectLock(projectId, async () => {
+        if (dryRun) {
+          let existingLength = 0;
+          try {
+            const existing = await client.readFile(args.filePath);
+            existingLength = existing.length;
+          } catch {
+            existingLength = 0;
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Dry run: ${projectLabel}\nTarget file: ${args.filePath}\nExisting size: ${existingLength} chars\nNew size: ${args.content.length} chars\nNo changes were written. Set dryRun to false to apply.`,
+            }],
+          };
+        }
+
+        await client.writeFile(args.filePath, args.content);
+        await client.stageChanges(args.filePath);
+        const commitResult = await client.commitAndPush(commitMessage, { push, paths: [args.filePath] });
+        const { diff, truncated } = await client.getDiff({
+          paths: [args.filePath],
+          contextLines,
+          maxOutputChars: maxPreviewChars,
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `Updated ${args.filePath} in ${projectLabel}`,
+              `Commit: ${commitResult.committed ? 'created' : 'skipped (no changes)'}`,
+              `Push: ${commitResult.pushed ? 'yes' : 'no'}`,
+              `Diff preview${truncated ? ' (truncated)' : ''}:`,
+              '',
+              diff || '(no diff to show)',
+              truncated ? '\n[diff truncated]' : '',
+            ].join('\n'),
+          }],
+        };
+      });
+    }
+
     case 'status_summary': {
       const { client, projectLabel, projectId } = resolveProjectContext(args);
       return withProjectLock(projectId, async () => {
@@ -385,6 +541,63 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           projectId: { type: 'string', description: 'Project ID override (optional)' },
         },
         required: ['filePath', 'sectionTitle'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'list_history',
+      description: 'Show recent git commits for the project',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', description: 'Maximum commits to return (default 20, max 200)' },
+          path: { type: 'string', description: 'Optional path filter' },
+          since: { type: 'string', description: 'git log --since filter (e.g., \"2.weeks\")' },
+          until: { type: 'string', description: 'git log --until filter' },
+          projectName: { type: 'string', description: 'Project key (default, project2, etc.)' },
+          gitToken: { type: 'string', description: 'Git token override (optional)' },
+          projectId: { type: 'string', description: 'Project ID override (optional)' },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'get_diff',
+      description: 'Get a git diff between refs or the working tree',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          fromRef: { type: 'string', description: 'Base ref (omit to diff working tree vs HEAD)' },
+          toRef: { type: 'string', description: 'Target ref (omit to use working tree)' },
+          path: { type: 'string', description: 'Single path filter' },
+          paths: { type: 'array', items: { type: 'string' }, description: 'Multiple path filters' },
+          contextLines: { type: 'integer', description: 'Unified diff context lines (0-10, default 3)' },
+          maxOutputChars: { type: 'integer', description: 'Truncate diff to this many characters (default 120000)' },
+          projectName: { type: 'string', description: 'Project key (default, project2, etc.)' },
+          gitToken: { type: 'string', description: 'Git token override (optional)' },
+          projectId: { type: 'string', description: 'Project ID override (optional)' },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'edit_file',
+      description: 'Write content to a file, then optionally commit and push',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filePath: { type: 'string', description: 'Target file path' },
+          content: { type: 'string', description: 'New file content' },
+          commitMessage: { type: 'string', description: 'Commit message (default: Update via Overleaf MCP)' },
+          push: { type: 'boolean', description: 'Whether to push after committing (default true)' },
+          dryRun: { type: 'boolean', description: 'If true, report sizes only and do not modify files' },
+          contextLines: { type: 'integer', description: 'Unified diff context lines for preview (0-10, default 3)' },
+          maxPreviewChars: { type: 'integer', description: 'Truncate diff preview to this many characters (default 120000)' },
+          projectName: { type: 'string', description: 'Project key (default, project2, etc.)' },
+          gitToken: { type: 'string', description: 'Git token override (optional)' },
+          projectId: { type: 'string', description: 'Project ID override (optional)' },
+        },
+        required: ['filePath', 'content'],
         additionalProperties: false,
       },
     },
