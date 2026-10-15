@@ -3,438 +3,332 @@
 
 *"I tried to argue with Overleaf, but it said my syntax was invalid."*
 
-# Overleaf MCP Server  
+# Overleaf MCP
 
-An MCP (Model Context Protocol) server that gives Claude and other MCP clients access to Overleaf projects through Git integration. It can read LaTeX files, parse structure, and extract content ,  basically letting AI peek under the hood of your papers (ethically, of course). 🧠  
+A VS Code extension and MCP server for Overleaf. Sign in once, see **all** your Overleaf projects in a VS Code side panel, open and edit them live, compile and read the PDF right next to your source, sync any project to a local folder, and give AI assistants (anything that speaks the Model Context Protocol: Claude Code, Claude Desktop, Codex, Copilot, Gemini CLI, Cursor, …) the tools to search, read, edit, and compile your papers — one project or many at a time. 🧠
 
-🔗 **Repo:** https://github.com/GhoshSrinjoy/Overleaf-mcp  
-
----
-
-## Executive Summary  
-
-This server bridges Overleaf and AI models through MCP. It lets clients list, read, and analyze LaTeX files as if Overleaf were a local workspace.  
-
-Everything’s Git-based, so you get versioned, safe access. A Redis queue manages concurrency, keeping multiple project operations from stepping on each other.  
-
-**In short:** It’s Overleaf → Git → Redis → MCP → Claude (or any client).  
+🔗 **Repo:** https://github.com/GhoshSrinjoy/Overleaf-mcp · ⬇️ **Downloads:** [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest)
 
 ---
 
-## Business Problem  
+## Executive Summary
 
-Overleaf is great for collaboration, but hard to integrate with tools like Claude or LLM-based assistants. You either:  
-- copy-paste LaTeX manually, or  
-- mess with API endpoints and tokens in ways that don’t scale.  
+Version 2 is a rewrite around a single, faster core:
 
-This MCP server makes Overleaf “AI-readable.” It lets LLMs fetch content, inspect sections, and summarize papers without exposing tokens or corrupting repos. Perfect for research groups, AI note-takers, or publishing workflows.  
+- **Live, not polled.** The server talks to Overleaf the way the Overleaf editor does: one persistent realtime connection per project. Reading a file takes milliseconds instead of a `git pull` per call, and edits are applied as small operational-transform updates that merge with whatever collaborators are typing. They show up live in their browser.
+- **See what you write.** Compile on Overleaf and read the PDF in a VS Code tab: it recompiles as the project changes (your saves, collaborators, AI edits), lists errors with links to the line, and jumps between source and PDF with SyncTeX.
+- **Works on every plan.** Signing in with the Overleaf website session needs no paid Git integration and no per-project tokens. Git tokens still work for headless servers (your old `projects.json` keeps working).
+- **No infrastructure.** Redis and BullMQ are gone. Per-project queues and file locks handle concurrency; the server is a single file you can download and run with Node.js.
+- **Built for agents.** Exact search-and-replace edits, a "suggest mode" that records AI edits as tracked changes for you to accept or reject, ripgrep plus ranked (BM25) search across projects, a LaTeX outline that follows `\input`, and compile with errors reported as `file:line`.
 
----
-
-## Methodology  
-
-**How it works**  
-1. Uses Overleaf’s Git integration to clone and sync projects.  
-2. Reads file trees and parses `.tex` documents for sections, subsections, and content.  
-3. Dispatches jobs through a Redis-backed BullMQ queue.  
-4. Each project gets its own Redis lock to prevent race conditions.  
-5. Returns clean structured data through the MCP protocol.  
-
-**Key features**  
-- 📄 File management (list/read Overleaf files)  
-- 📋 Document structure parsing (sections & subsections)  
-- 🔍 Content extraction (get specific section by title)  
-- 📊 Project summary (status, structure overview)  
-- 🧩 Multi-project support  
-- 🔒 Redis-backed queue for concurrency safety  
-- 🕒 Git history & diff (refs or working tree) with truncation controls  
-- ✏️ Safe edits: write files with optional commit/push, diff previews, and dry-run checks  
+**In short:** Overleaf ⇄ live connection ⇄ VS Code panel + PDF preview + local folders + MCP ⇄ your AI assistant.
 
 ---
 
-## Installation
+## Business Problem
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+Overleaf is great for collaboration but closed to tooling: copy-pasting LaTeX into an assistant loses structure, and the Git bridge needs a paid plan, a token per project, and still can't tell you which projects you have. This project makes your whole Overleaf account browsable, editable, compilable and AI-accessible from your editor — without breaking collaborators' live sessions.
 
-3. Set up your projects configuration:
-   ```bash
-   cp projects.example.json projects.json
-   ```
+---
 
-4. Edit `projects.json` with your Overleaf credentials:
-   ```json
-   {
-     "projects": {
-       "default": {
-         "name": "My Paper",
-         "projectId": "YOUR_OVERLEAF_PROJECT_ID",
-         "gitToken": "YOUR_OVERLEAF_GIT_TOKEN"
-       }
-     }
-   }
-   ```
+## Features
 
-5. Start a Redis instance (locally or remotely). For example:
-   ```bash
-   docker compose up redis -d
-   ```
+### VS Code extension
 
-6. Run the MCP server:
-   ```bash
-   npm start
-   ```
+- 📚 **Projects panel** listing every project (pinned first, then by last update), expandable into its live file tree. Collaborators' file changes appear immediately.
+- ✏️ **Live editing** of Overleaf files (`overleaf://` documents): saving pushes your change; edits from collaborators or AI tools reload open files; if a document changed while you edited, your save is merged on top instead of overwriting it.
+- 📄 **PDF preview** next to the editor: Recompile, automatic recompiles on change or on save, draft mode, stop on first error, an errors-and-warnings list that opens the line, zoom, page navigation, download, and SyncTeX both ways (double-click the PDF → source; **Show in PDF** from the editor).
+- 🔁 **Local folder sync** (two-way): keep a project mirrored in a folder so local LaTeX builds, git and AI file tools work on real files. Edits on both sides merge; true clashes get conflict markers.
+- 🩺 **Compile problems** in the Problems panel, on the Overleaf files and on synced local copies.
+- 🔎 **Search** across projects (the same engine the AI uses).
+- 🔐 **Sign in with the browser** (Google, ORCID, institutional SSO, password, captcha — whatever Overleaf asks), by pasting a session cookie, or with email/password on self-hosted servers.
+- 🔌 **One-click AI client setup** (Claude Code, Codex CLI, Copilot CLI, Gemini CLI, Claude Desktop, Cursor, Windsurf, or every one installed at once) and automatic registration with VS Code's built-in MCP support.
 
-## Getting Overleaf Credentials
+### MCP server
 
-1. **Git Token**: 
-   - Go to Overleaf Account Settings → Git Integration
-   - Click "Create Token"
+21 tools, listed [below](#mcp-tools). It runs inside VS Code, or on its own as a single downloadable file, an npm package, a Claude Desktop bundle, or a Docker image.
 
-2. **Project ID**: 
-   - Open your Overleaf project
-   - Find it in the URL: `https://www.overleaf.com/project/[PROJECT_ID]`
+---
 
-## Configuration & Environment
+## Install
 
-The server coordinates all tool calls through a Redis-backed BullMQ queue. Heavy Git operations are serialized per project using Redis locks to avoid repository corruption while still allowing concurrent work across different projects.
+Everything is on the [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest):
 
-Key environment variables:
+| File | For |
+| --- | --- |
+| `overleaf-mcp.vsix` | The VS Code extension (panel, live editing, PDF preview, and the MCP server for every assistant on the computer) |
+| `overleaf-mcp.js` | The MCP server as one file, for assistants without VS Code. Needs Node.js 20+ |
+| `overleaf-mcp.mcpb` | Claude Desktop: open it to install (Settings → Extensions → Install Extension…) |
+| `overleaf-live-mcp.tgz` | The npm package, for `npx` |
 
-- `PROJECTS_FILE`: Path to the Overleaf project map (default: `./projects.json`).
-- `OVERLEAF_TEMP_DIR`: Cache directory for cloned repositories (default: `./temp`).
-- `REDIS_URL` **or** `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`/`REDIS_DB`: Redis connection details.
-- `REQUEST_QUEUE_NAME`: Override the BullMQ queue name (default: `overleaf-mcp-requests`).
-- `REQUEST_CONCURRENCY`: Worker concurrency for queued jobs (default: `4`).
-- `REQUEST_TIMEOUT_MS`: Maximum time the server waits for a job to finish (default: `120000`).
-- `PROJECT_LOCK_TTL_MS`, `PROJECT_LOCK_RETRY_MS`, `PROJECT_LOCK_MAX_WAIT_MS`: Advanced tuning for per-project Redis locks.
-- `OVERLEAF_GIT_TOKEN`, `OVERLEAF_PROJECT_ID`: Optional environment fallbacks if they are not defined in `projects.json` or tool arguments.
-- `HISTORY_LIMIT_DEFAULT`, `HISTORY_LIMIT_MAX`: Defaults for the `list_history` tool (defaults: 20 and 200).
-- `DIFF_CONTEXT_LINES`, `DIFF_MAX_OUTPUT_CHARS`: Defaults for `get_diff`/`edit_file` previews (defaults: 3 and 120000).
-- `OVERLEAF_GIT_AUTHOR_NAME`, `OVERLEAF_GIT_AUTHOR_EMAIL`: Git author/committer identity required for commits when using `edit_file`.
+### VS Code
 
-## Claude Desktop Setup
+```bash
+code --install-extension overleaf-mcp.vsix      # or Extensions view → … → Install from VSIX…
+```
 
-Add to your Claude Desktop configuration file:
+Then click the **Overleaf** icon in the activity bar → **Sign in**. A browser window opens on the Overleaf login page; log in as usual and it closes by itself. Your projects appear in the panel. To give other assistants access, open the panel menu (`…`) → **Connect an AI Client…** and pick one, or **Every AI tool found on this computer**.
 
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Linux**: `~/.config/claude/claude_desktop_config.json`
+Self-hosted Overleaf (Community Edition / Server Pro)? Run **Overleaf: Use a Different Overleaf Server…** first.
 
-### Option 1: Node.js Direct (Local Development)
+### AI assistants without VS Code
+
+**1. Download the server** (skip this if you use the VS Code extension: it installs the same file in the same place):
+
+```bash
+# macOS / Linux
+mkdir -p ~/.overleaf-mcp/server && curl -fsSL -o ~/.overleaf-mcp/server/overleaf-mcp.js \
+  https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest/download/overleaf-mcp.js
+```
+
+```powershell
+# Windows (PowerShell)
+New-Item -ItemType Directory -Force "$HOME\.overleaf-mcp\server" | Out-Null
+Invoke-WebRequest https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest/download/overleaf-mcp.js -OutFile "$HOME\.overleaf-mcp\server\overleaf-mcp.js"
+```
+
+**2. Add it to your assistant:**
+
+| Assistant | macOS / Linux |
+| --- | --- |
+| Claude Code | `claude mcp add --scope user overleaf -- node ~/.overleaf-mcp/server/overleaf-mcp.js` |
+| Codex CLI | `codex mcp add overleaf -- node ~/.overleaf-mcp/server/overleaf-mcp.js` |
+| GitHub Copilot CLI | `copilot mcp add overleaf -- node ~/.overleaf-mcp/server/overleaf-mcp.js` |
+| Gemini CLI | In `~/.gemini/settings.json`: `"mcpServers": {"overleaf": {"command": "node", "args": ["/home/you/.overleaf-mcp/server/overleaf-mcp.js"]}}` |
+| Cursor, Windsurf, others | The same `mcpServers` entry in the client's MCP config (`~/.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, …) |
+| Claude Desktop | Open `overleaf-mcp.mcpb` (no Node.js needed), or use the `mcpServers` entry in `claude_desktop_config.json` |
+| VS Code without the extension | `code --add-mcp '{"name":"overleaf","command":"node","args":["/home/you/.overleaf-mcp/server/overleaf-mcp.js"]}'` |
+
+On Windows (PowerShell), use the full path and quote the `--` (PowerShell drops a bare `--` before it reaches these tools):
+
+```powershell
+claude  mcp add --scope user overleaf '--' node "$HOME\.overleaf-mcp\server\overleaf-mcp.js"
+codex   mcp add overleaf '--' node "$HOME\.overleaf-mcp\server\overleaf-mcp.js"
+copilot mcp add overleaf '--' node "$HOME\.overleaf-mcp\server\overleaf-mcp.js"
+```
+
+**3. Sign in.** Ask the assistant to sign in to Overleaf (the `sign_in` tool opens the Overleaf login page in your browser), or do it once from a terminal: `node ~/.overleaf-mcp/server/overleaf-mcp.js login --browser`. The session is saved in `~/.overleaf-mcp/credentials.json` and shared by every assistant on the computer.
+
+**With npx instead:** use `npx -y https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest/download/overleaf-live-mcp.tgz` as the command (for example `claude mcp add --scope user overleaf -- npx -y <that URL>`). On Windows, clients that cannot start `npx` themselves need `cmd /c npx -y <that URL>`.
+
+### From source
+
+```bash
+npm install
+npm run package                      # creates overleaf-mcp-<version>.vsix
+code --install-extension overleaf-mcp-2.1.0.vsix
+npm run package:release              # all release files into build/release
+```
+
+---
+
+## PDF preview
+
+Right-click a project → **Open PDF Preview**, or click the preview button at the top of an open `.tex` file. The preview opens beside the editor.
+
+- **Recompile** (or `Ctrl+Enter` / `⌘+Enter` in the preview) compiles on Overleaf with the project's own compiler and main document. While the preview is open it also recompiles by itself:
+  - **On any change** (default): your saves, collaborators' edits and AI edits.
+  - **When you save**: only your saves in VS Code (Overleaf files and synced local copies).
+  - **Never**: only when you press Recompile.
+
+  Pick one under the arrow next to Recompile, or with the `overleafMcp.pdf.autoCompile` setting. A preview in a background tab catches up when you show it.
+- **Draft mode** (faster, leaves images out) and **Stop on first error** are in the same menu.
+- **Errors and warnings** are counted in the toolbar; click the count for the list, and an entry to open its line. They are also in the Problems panel.
+- **SyncTeX:** double-click anywhere in the PDF to open the source line that produced it. In the editor, right-click → **Show in PDF** highlights where the cursor's line ended up. Both also work for projects synced to a local folder.
+- Zoom (also `Ctrl` + mouse wheel), page number, **Save the PDF…**, **Open in your PDF viewer**, the raw compile log, and find (`Ctrl+F`).
+
+To give **Show in PDF** a shortcut, add to `keybindings.json`:
 
 ```json
-{
-  "mcpServers": {
-    "overleaf": {
-      "command": "node",
-      "args": [
-        "/path/to/OverleafMCP/overleaf-mcp-server.js"
-      ]
-    }
-  }
-}
+{ "key": "ctrl+alt+j", "command": "overleafMcp.syncToPdf", "when": "resourceScheme == overleaf" }
 ```
 
-**Requirements**: Node.js installed locally, Redis running locally, all dependencies installed via `npm install`.
+---
 
-### Option 2: Docker Compose (Recommended for Production)
+## Connecting AI clients
 
-```json
-{
-  "mcpServers": {
-    "overleaf": {
-      "command": "docker",
-      "args": ["compose", "run", "--rm", "-T", "mcp"],
-      "cwd": "/path/to/OverleafMCP"
-    }
-  }
-}
+The extension installs a stable copy of the server at `~/.overleaf-mcp/server/overleaf-mcp.js` (it survives extension updates) and shares your sign-in with it through `~/.overleaf-mcp/credentials.json`. **Connect an AI Client…** writes the configuration for you:
+
+| Client | What the extension does |
+| --- | --- |
+| VS Code chat (agent mode) | Registered automatically ("Overleaf" in the tools list) |
+| Claude Code, Codex CLI, GitHub Copilot CLI | Runs the tool's own `mcp add` command in a terminal |
+| Claude Desktop, Cursor, Windsurf, Gemini CLI | Adds `overleaf` to the tool's JSON config (keeping a `.bak` copy) |
+| Every AI tool found on this computer | All of the above for each tool that is installed |
+| Any HTTP client | `http://127.0.0.1:39847/mcp` with `Authorization: Bearer <token>` (**Show MCP Connection Details** copies the token). Runs while VS Code is open |
+
+Stdio servers work with or without VS Code running. The HTTP endpoint shares the extension's live connections, so its edits show up in open editors instantly. More client-specific notes are in [CLAUDE_CONFIG.md](CLAUDE_CONFIG.md).
+
+---
+
+## MCP Tools
+
+| Tool | What it does |
+| --- | --- |
+| `status` | Signed-in account, pinned projects, search engine |
+| `sign_in` | Opens the Overleaf login page in the browser (or takes a session cookie) and shares the session with every assistant on the computer |
+| `list_projects` | All projects with ids, last update, owner, access, tags, local sync folder |
+| `pin_projects` | Pin/unpin projects; pinned projects are the default scope, and one pinned project lets tools omit `project` |
+| `create_project` | New blank or example project |
+| `list_files` | File tree with the main document marked |
+| `read_file` | Live content (optionally a line range); images come back as images |
+| `grep` | Exact text or regex across one, several or all projects (ripgrep), with context lines and globs |
+| `search` | Relevance-ranked passages for a topic (BM25 with fuzzy and prefix matching) |
+| `get_outline` | Chapters/sections across `\input`/`\include`, each with `file:line` |
+| `get_section` | The LaTeX of one section, found by title |
+| `edit_file` | Exact search-and-replace edits, applied atomically and live; `suggest: true` makes them tracked changes; `dryRun` previews the diff |
+| `write_file` | Create or overwrite a file (minimal live diff for existing docs) |
+| `delete_file`, `move_file`, `create_folder` | File management |
+| `upload_file`, `download_file` | Move files between this computer and a project |
+| `compile` | Compile on Overleaf; errors/warnings with `file:line`; optionally save the PDF |
+| `history`, `history_diff` | Project history (who changed what, when) and diffs between versions |
+
+Every tool accepts a project by name, id or Overleaf URL, and every file in a project can be read, searched and changed. Errors explain how to recover (for example, an ambiguous `oldText` reports how many times it occurs; a near miss shows the passage that differs only in whitespace).
+
+> Overleaf documents cannot contain emoji or other characters outside the Basic Multilingual Plane; tools reject such edits with the offending line instead of letting Overleaf corrupt them.
+
+---
+
+## Local folder sync
+
+Right-click a project → **Sync to Local Folder…** (default `~/Overleaf/<project>`). The folder must be new or empty.
+
+- Saving a file locally pushes it within a second; edits on Overleaf are written to the file.
+- Changes made while sync was off are reconciled three ways (local / Overleaf / last synced): one-sided changes are copied, edits on both sides are merged, and clashing edits get `<<<<<<<` markers. Resolve and save; the resolution is pushed.
+- Build output (`*.aux`, `*.log`, the main PDF, …) stays local; edit `.overleafignore` in the folder to change that.
+- The PDF preview, **Show in PDF** and compile problems work on the local copies too.
+- Only one VS Code window (or CLI) syncs a folder at a time; another takes over if it closes.
+- Without VS Code: `overleaf-mcp sync "<project>" [folder]`.
+
+---
+
+## Headless, CLI and Docker
+
+The server is a single self-contained file (`overleaf-mcp.js` on the release page, `dist/mcp-server.js` when built; Node ≥ 20). From npm it is called `overleaf-live-mcp`.
+
+```text
+overleaf-mcp                         serve MCP over stdio (what AI clients launch)
+overleaf-mcp --http [--port N]       serve MCP over HTTP on 127.0.0.1
+overleaf-mcp login --browser         sign in on the real login page
+overleaf-mcp login --cookie <value>  or paste the overleaf_session2 cookie
+overleaf-mcp login --email E --password P   (self-hosted servers)
+overleaf-mcp status | logout
+overleaf-mcp sync <project> [folder] two-way sync until Ctrl+C
 ```
 
-**Requirements**: Docker and Docker Compose installed, project built with `docker compose build`.
-**Benefits**: Isolated environment, automatic Redis management, ephemeral containers.
+(`overleaf-mcp` stands for `node path/to/overleaf-mcp.js`.)
 
-### Option 3: Docker Exec (Persistent Container)
+**Docker** (your existing client config `docker compose run --rm -T mcp` keeps working):
 
-```json
-{
-  "mcpServers": {
-    "overleaf": {
-      "command": "docker",
-      "args": ["exec", "-i", "CONTAINER_NAME", "node", "overleaf-mcp-server.js"]
-    }
-  }
-}
-```
-
-**Example with specific container name**:
-```json
-{
-  "mcpServers": {
-    "overleaf": {
-      "command": "docker",
-      "args": ["exec", "-i", "overleaf_mcp-mcp-1", "node", "overleaf-mcp-server.js"]
-    }
-  }
-}
-```
-
-**Requirements**: 
-- Containers already running via `docker compose up -d`
-- Replace `CONTAINER_NAME` with your actual container name (find with `docker ps`)
-- Container must remain running for MCP to work
-
-**When to use each approach**:
-- **Option 1**: Development and debugging
-- **Option 2**: Clean, isolated production deployments
-- **Option 3**: When you want persistent containers and direct execution control
-
-Restart Claude Desktop after configuration.
-
-## Docker Usage
-
-You can run the MCP server and its Redis dependency entirely in containers using the provided compose file.
-
-### Basic Docker Setup
-
-1. Copy `projects.example.json` to `projects.json` and fill in your credentials.
-2. (Optional) Create a cache directory so clones persist across runs:
-   ```bash
-   mkdir -p data/cache
-   ```
-3. Build the containers:
-   ```bash
-   docker compose build
-   ```
-4. Start both Redis and MCP containers:
-   ```bash
-   docker compose up -d
-   ```
-
-### Advanced Docker Usage
-
-**For ephemeral containers (Option 2 above)**:
 ```bash
-# Start only Redis persistently
-docker compose up -d redis
-
-# MCP server will be started on-demand by Claude Desktop
+docker compose build
+docker compose run --rm mcp login --cookie "<overleaf_session2 value>"   # optional: web session
+docker compose run --rm -T mcp                                         # what MCP clients run
 ```
 
-**For persistent containers (Option 3 above)**:
-```bash
-# Start both services and keep them running
-docker compose up -d
-
-# Verify containers are running
-docker compose ps
-
-# Check container names for your configuration
-docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-```
-
-The compose service maps `projects.json` into the container at `/app/projects.json`, and stores cloned repos under `./data/cache` on the host.
-
-Use `docker compose down` when you want to stop all containers.
-
-### Container Management
-
-**View container logs**:
-```bash
-# MCP server logs
-docker compose logs mcp
-
-# Redis logs  
-docker compose logs redis
-
-# Follow logs in real-time
-docker compose logs -f mcp
-```
-
-**Troubleshooting container names**:
-```bash
-# List all containers with names
-docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-
-# If using Option 3, update your Claude config with the correct container name
-```
-
-## Available Tools
-
-### `list_projects`
-List all configured projects.
-
-### `list_files`
-List files in a project (default: .tex files).
-- `extension`: File extension filter (optional)
-- `projectName`: Project identifier (optional, defaults to "default")
-
-### `read_file`
-Read a specific file from the project.
-- `filePath`: Path to the file (required)
-- `projectName`: Project identifier (optional)
-
-### `get_sections`
-Get all sections from a LaTeX file.
-- `filePath`: Path to the LaTeX file (required)
-- `projectName`: Project identifier (optional)
-
-### `get_section_content`
-Get content of a specific section.
-- `filePath`: Path to the LaTeX file (required)
-- `sectionTitle`: Title of the section (required)
-- `projectName`: Project identifier (optional)
-
-### `list_history`
-Show recent git commits.
-- `limit`: Maximum commits to return (default 20, max 200)
-- `path`: Optional path filter
-- `since` / `until`: git log time filters (e.g., `2.weeks`, `2025-01-01`)
-- `projectName`: Project identifier (optional)
-
-### `get_diff`
-Get a git diff between refs or the working tree.
-- `fromRef`: Base ref (omit to diff working tree vs HEAD)
-- `toRef`: Target ref (omit to use working tree)
-- `path` / `paths`: Optional path filters
-- `contextLines`: Unified diff context lines (0-10, default 3)
-- `maxOutputChars`: Truncate diff to this many characters (default 120000)
-- `projectName`: Project identifier (optional)
-
-### `edit_file`
-Write a file and optionally commit/push the change.
-- `filePath`: Target file path (required)
-- `content`: New file content (required)
-- `commitMessage`: Commit message (default: "Update via Overleaf MCP")
-- `push`: Whether to push after committing (default: true)
-- `dryRun`: If true, report sizes only; do not write or commit
-- `contextLines` / `maxPreviewChars`: Diff preview controls
-- `projectName`: Project identifier (optional)
-
-### `status_summary`
-Get a comprehensive project status summary.
-- `projectName`: Project identifier (optional)
-
-## Usage Examples
-
-```
-# List all projects
-Use the list_projects tool
-
-# Get project overview
-Use status_summary tool
-
-# Read main.tex file
-Use read_file with filePath: "main.tex"
-
-# Get Introduction section
-Use get_section_content with filePath: "main.tex" and sectionTitle: "Introduction"
-
-# List all sections in a file
-Use get_sections with filePath: "main.tex"
-
-# Show last 10 commits
-Use list_history with limit: 10
-
-# Show diff between HEAD and previous commit for main.tex
-Use get_diff with fromRef: "HEAD~1", toRef: "HEAD", path: "main.tex", contextLines: 5
-
-# Edit and push a file
-Use edit_file with filePath: "sections/intro.tex", content: "<new text>", commitMessage: "Update intro", push: true
-```
-
-## Safeguards & limits
-- Per-project Redis locks prevent concurrent git operations from colliding.
-- Diff outputs are truncated by default (`maxOutputChars`, default 120k). Adjust per call as needed.
-- History queries are capped (`limit`, default 20, max 200) to avoid timeouts.
-- `edit_file` supports `dryRun` for size checks and returns a truncated diff preview; commits can skip pushes via `push: false`.
-- All file writes go through path validation to stay inside the repo cache.
-
-## Multi-Project Usage
-
-To work with multiple projects, add them to `projects.json`:
+The compose file mounts `projects.json` (Git tokens) and `./data` (session, caches, Git clones). Without a session, projects listed in `projects.json` are served through the Git bridge:
 
 ```json
 {
   "projects": {
-    "default": {
-      "name": "Main Paper",
-      "projectId": "project-id-1",
-      "gitToken": "token-1"
-    },
-    "paper2": {
-      "name": "Second Paper", 
-      "projectId": "project-id-2",
-      "gitToken": "token-2"
-    }
+    "default": { "name": "My Paper", "projectId": "YOUR_PROJECT_ID", "gitToken": "YOUR_GIT_TOKEN" }
   }
 }
 ```
 
-Then specify the project in tool calls:
-```
-Use get_section_content with projectName: "paper2", filePath: "main.tex", sectionTitle: "Methods"
+Git-token projects support reading, searching, outlines, edits (commit + push, retried if someone pushed first) and history. Compile, suggest mode and project listing need the web session.
+
+### Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `OVERLEAF_MCP_HOME` | Data directory (default `~/.overleaf-mcp`) |
+| `OVERLEAF_COOKIES` / `OVERLEAF_SESSION` | Session for headless use (full Cookie header, or the `overleaf_session2` value) |
+| `OVERLEAF_SERVER_URL` | Server (default `https://www.overleaf.com`); also where `sign_in` signs in |
+| `PROJECTS_FILE` | Git-token projects file (default `<home>/projects.json`) |
+| `OVERLEAF_GIT_TOKEN`, `OVERLEAF_PROJECT_ID` | Single Git-token project without a file |
+| `OVERLEAF_GIT_AUTHOR_NAME`, `OVERLEAF_GIT_AUTHOR_EMAIL` | Commit identity for Git-token edits |
+| `OVERLEAF_MCP_TOKEN`, `OVERLEAF_MCP_PORT` | Bearer token and port for `--http` |
+| `OVERLEAF_MCP_RG` | Path to a ripgrep binary |
+
+---
+
+## Methodology
+
+```text
+                    ┌──────────────── Overleaf (overleaf.com or self-hosted) ────────────────┐
+                    │  web API (projects, zip, uploads, compile, SyncTeX, history)   realtime │
+                    └───────────────▲────────────────────────────────────────▲────────────────┘
+                                    │ session cookie                          │ OT updates, live events
+┌──────────────────────── core (TypeScript) ──────────────────────────────────┴──────────────┐
+│ SessionBackend ── realtime pool (1 connection/project, auto-reconnect)    GitBackend (tokens) │
+│ OverleafService: project resolution · pins · snapshot cache · ripgrep / BM25 search          │
+│                  LaTeX outline · log parser · 3-way merge · local mirror engine              │
+└───────────────▲───────────────────────────────▲───────────────────────────────▲─────────────┘
+                │                               │                               │
+     MCP server (stdio / HTTP)          VS Code extension                CLI (sync, login)
+     AI assistants                      panel · overleaf:// files ·      Docker image
+                                        PDF preview (pdf.js) ·
+                                        local sync · problems
 ```
 
-## File Structure
+1. **Sign-in.** A throwaway browser profile opens the real Overleaf login page; once you are in, the session cookie is captured over the DevTools protocol and the profile is deleted. Cookies live in VS Code's secret storage, mirrored (optionally) to an owner-only file for MCP servers started by other apps.
+2. **Reading.** Documents are read over the realtime connection (always the latest text, including unsaved typing of collaborators). Search uses a local text snapshot per project, refreshed only when Overleaf reports the project changed.
+3. **Writing.** Edits become OT updates against the version that was read; the server transforms them over concurrent edits. Overleaf's newer `history-ot` documents are supported, including tracked changes.
+4. **Compiling.** Compiles run on Overleaf's own servers. The preview draws the PDF with pdf.js inside a locked-down webview; SyncTeX lookups go to Overleaf with the id of the build on screen, so positions always match the PDF you see. Edits arriving over the realtime connection trigger debounced recompiles, one at a time per project.
+5. **Concurrency.** Per-project queues in-process, file locks across processes, and a lease for local sync folders.
 
+---
+
+## Security notes
+
+- `~/.overleaf-mcp/credentials.json` holds the Overleaf session (owner-only permissions). Turn off `overleafMcp.mcp.shareSessionWithExternalClients` to keep it only in VS Code's secret storage.
+- Signing out also ends the session on Overleaf when it was created by the browser or password sign-in; a pasted cookie is left alone (it is your browser's session).
+- The HTTP endpoint listens on `127.0.0.1` only, requires a bearer token, and rejects browser (cross-origin) requests.
+- The PDF preview runs only its own scripts (strict content security policy); scripts inside PDFs are not run, and links open through VS Code's usual confirmation.
+- Git tokens are passed to git through its environment, never written to `.git/config` or shown in process lists.
+- `projects.json`, `data/` and `*.vsix` are git-ignored. Never commit tokens.
+
+---
+
+## Development
+
+```bash
+npm install
+npm run build          # dist/extension.js, dist/mcp-server.js and the PDF viewer files in media/pdfjs
+npm run typecheck
+npm test               # unit tests
+npm run package:server # build/release: overleaf-mcp.js, overleaf-live-mcp.tgz, overleaf-mcp.mcpb
+npm run package:release  # the same plus overleaf-mcp.vsix
 ```
-OverleafMCP/
-├── Dockerfile                 # Container image for the MCP server
-├── docker-compose.yml         # Docker Compose stack (server + Redis)
-├── overleaf-mcp-server.js     # Main MCP server with Redis-backed queue
-├── overleaf-git-client.js     # Git client library
-├── package.json               # Dependencies and scripts
-├── package-lock.json          # Exact dependency versions
-├── projects.example.json      # Configuration template (copy to projects.json)
-├── README.md                  # Documentation
-└── .dockerignore              # Docker build context exclusions
+
+Integration tests run against a local Overleaf Community Edition in Docker (nothing touches overleaf.com):
+
+```bash
+docker compose -f test/overleaf-ce/docker-compose.yml up -d    # first start takes a minute
+npm run test:integration    # protocol and SyncTeX, live editing (both doc formats), MCP end to end, browser sign-in, Git mode, local sync
+npm run test:extension      # inside a real VS Code instance: panel, live files, PDF preview, SyncTeX, auto-recompile, MCP endpoint, sync
+npm run test:vsix           # the same, against the packaged .vsix as installed
 ```
+
+If port 8090 is taken, start the server with `OVERLEAF_TEST_PORT=8095` and run the tests with `OVERLEAF_TEST_URL=http://localhost:8095`.
+
+Press F5 in VS Code to launch an Extension Development Host.
+
+---
 
 ## Troubleshooting
 
-### Common Issues
+- **"Not signed in … or the session has expired"** — sign in again from the panel, or ask your assistant to use `sign_in` (sessions expire after a few days without use).
+- **Browser sign-in doesn't open** — set `overleafMcp.browserPath` to Chrome, Edge, Brave or Chromium, or use **Paste a session cookie**.
+- **The PDF preview stays empty** — check **Output → Overleaf MCP**; **Show Compile Log** shows what LaTeX said. A compile that times out on Overleaf usually finishes in draft mode.
+- **"Too recently compiled"** — Overleaf refuses compiles less than a second or two apart; the extension and the `compile` tool wait and retry.
+- **Long compiles time out in Codex** — raise `tool_timeout_sec` for `[mcp_servers.overleaf]` in `~/.codex/config.toml` (the default is 60 seconds).
+- **Port 39847 in use** — change `overleafMcp.mcp.httpServer.port`; stdio clients are unaffected.
+- **"Overleaf asked for a captcha"** — password sign-in is blocked on overleaf.com; use the browser sign-in.
+- **Rate limited** — Overleaf limits logins (10 per 2 minutes), project downloads (10 per minute per project) and compiles; the tools back off and retry.
 
-1. **"Server disconnected" in Claude Desktop**:
-   - Check container names with `docker ps`
-   - Verify containers are running with `docker compose ps`
-   - Check Redis connection with `docker compose logs redis`
-
-2. **"Project does not exist" error**:
-   - Verify Project ID in your Overleaf URL
-   - Check Git Token is valid and not expired
-   - Ensure Git integration is enabled in Overleaf project settings
-
-3. **Redis connection errors**:
-   - Ensure Redis container is running: `docker compose up -d redis`
-   - Check Redis logs: `docker compose logs redis`
-
-4. **Container name mismatch (Option 3 users)**:
-   - Find correct container name: `docker ps --format "table {{.Names}}"`
-   - Update Claude Desktop config with exact container name
-   - Container names may include project directory prefix (e.g., `overleaf_mcp-mcp-1`)
-
-### Why Redis is Important
-
-Redis provides several critical functions:
-
-- **Queue Management**: Handles multiple simultaneous requests without blocking
-- **Project Locking**: Prevents Git conflicts when multiple operations access the same project
-- **Worker Pool Management**: Distributes workload across multiple worker processes
-- **Production Readiness**: Makes the server scalable and robust for concurrent usage
-
-Without Redis, the server would work for single-user scenarios but could face race conditions and resource exhaustion under load.
-
-## Security Notes
-
-- `projects.json` is gitignored to protect your credentials
-- Never commit real project IDs or Git tokens
-- Use the provided `projects.example.json` as a template
-- Container logs may contain sensitive information - secure appropriately
+---
 
 ## Citation
 
@@ -449,42 +343,30 @@ If you use this software in your research, please cite:
 }
 ```
 
-## Skills  
+## Skills
 
-This project touches on: Node.js, Redis (BullMQ), Docker, Overleaf Git integration, file parsing (LaTeX), concurrent job queues, and MCP protocol design.  
-It also demonstrates practical engineering for AI × research integration — building bridges between human writing tools and model understanding. 🧩  
-
----
-
-## Results & Business Recommendation  
-
-**What it delivers**  
-- Seamless Overleaf access for Claude and other MCP clients.  
-- Structured reading of LaTeX files and sections.  
-- Scalable multi-project handling via Redis queues.  
-- No need to expose Overleaf APIs publicly or store plaintext tokens.  
-
-**Best for:**  
-- Research labs building paper assistants or summarizers.  
-- AI tools integrating academic context.  
-- Developers needing safe, concurrent Overleaf sync.  
-
-**Recommendation:**  
-Use **Docker Compose (Option 2)** for production : it keeps Redis and the MCP server isolated and persistent.  
-For local testing, **Node Direct (Option 1)** is enough.  
-Option 3 (Docker Exec) is great when you want persistent containers and direct control. 🎯  
+This project touches on: TypeScript, VS Code extension APIs (tree views, virtual file systems, webviews, secret storage, MCP registration), the Model Context Protocol, Overleaf's realtime protocol (socket.io 0.9) and operational transformation, pdf.js and SyncTeX, three-way merging, ripgrep and BM25 search, LaTeX log parsing, the Chrome DevTools Protocol, Git, Docker, and testing against a real Overleaf server.
 
 ---
 
-## Next Steps  
+## Results & Business Recommendation
 
-🧠 Add smarter section extraction using regex or tree-based parsing.  
-🧵 Add worker scaling for large document sets.  
-🔒 Add encryption for cached repositories.  
-🧩 Extend support for Markdown and BibTeX parsing.  
-📦 Publish a prebuilt Docker image to Docker Hub.  
-🧰 Add CI tests for Redis + lock integrity.  
-🤖 Add optional Claude prompts for “auto-summarize LaTeX sections.”  
+### What it delivers
+
+- Every Overleaf project in your editor, editable live and previewed as a PDF, with collaborators unaffected.
+- AI assistants that can find, read, edit (or suggest), and compile across projects, installed in one step for each assistant.
+- No Redis, no per-project tokens, free plans included; Git tokens still work headless.
+
+**Recommendation:** Use the **VS Code extension** day to day (it signs in, keeps the panel live, previews the PDF and configures your assistants). Use the **single-file server, npm package or Claude Desktop bundle** where VS Code isn't involved, and **Docker or the CLI** on servers.
+
+---
+
+## Next Steps
+
+🧾 Comments and review threads as MCP tools.
+📦 Publish to the VS Code Marketplace and to npm (`npx -y overleaf-live-mcp`).
+🧠 Optional semantic (embedding) search on top of BM25.
+🗂️ Project-wide find-and-replace with preview.
 
 ---
 MIT License

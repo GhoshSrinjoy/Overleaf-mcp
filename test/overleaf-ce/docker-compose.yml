@@ -1,0 +1,40 @@
+# Local Overleaf Community Edition used by the integration tests.
+#   docker compose -f test/overleaf-ce/docker-compose.yml up -d
+# (if port 8090 is taken: set OVERLEAF_TEST_PORT for compose and OVERLEAF_TEST_URL for the tests)
+#   npm run test:integration
+# Everything here is throwaway test data; nothing talks to overleaf.com.
+name: overleaf-mcp-test
+
+services:
+  overleaf:
+    image: sharelatex/sharelatex:latest
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${OVERLEAF_TEST_PORT:-8090}:80"
+    environment:
+      OVERLEAF_APP_NAME: Overleaf MCP Test
+      OVERLEAF_SITE_URL: http://localhost:${OVERLEAF_TEST_PORT:-8090}
+      OVERLEAF_MONGO_URL: mongodb://mongo/sharelatex
+      OVERLEAF_REDIS_HOST: redis
+      REDIS_HOST: redis
+      OVERLEAF_INVITE_TOKEN_SECRET: overleaf-mcp-test-invite-secret
+      EMAIL_CONFIRMATION_DISABLED: "true"
+      ENABLED_LINKED_FILE_TYPES: project_file,project_output_file
+
+  mongo:
+    image: mongo:8.0
+    command: --replSet overleaf
+    healthcheck:
+      test: >-
+        mongosh --quiet --eval "try { rs.status().ok } catch (e) {
+        rs.initiate({_id: 'overleaf', members: [{_id: 0, host: 'mongo:27017'}]}).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine

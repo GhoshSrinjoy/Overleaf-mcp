@@ -1,16 +1,723 @@
 {
   "name": "overleaf-mcp",
-  "version": "1.0.0",
-  "description": "MCP server for Overleaf Git integration",
-  "type": "module",
-  "main": "overleaf-mcp-server.js",
+  "displayName": "Overleaf MCP",
+  "description": "Sign in to Overleaf, browse, edit, compile and preview all your projects in VS Code, and give AI assistants live search, read, edit and compile access through MCP.",
+  "version": "2.1.0",
+  "publisher": "ghoshsrinjoy",
+  "icon": "media/icon.png",
   "license": "MIT",
-  "scripts": {
-    "start": "node overleaf-mcp-server.js"
+  "author": "GhoshSrinjoy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GhoshSrinjoy/Overleaf-mcp"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0",
-    "bullmq": "^5.58.7",
-    "ioredis": "^5.8.0"
+  "engines": {
+    "vscode": "^1.101.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "overleaf",
+    "latex",
+    "mcp",
+    "model context protocol",
+    "ai",
+    "pdf",
+    "preview",
+    "synctex"
+  ],
+  "main": "./dist/extension.js",
+  "bin": {
+    "overleaf-mcp": "dist/mcp-server.js"
+  },
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:overleaf",
+    "onWebviewPanel:overleafMcp.pdfPreview"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "overleafMcp",
+          "title": "Overleaf",
+          "icon": "media/overleaf.svg"
+        }
+      ]
+    },
+    "views": {
+      "overleafMcp": [
+        {
+          "id": "overleafMcp.projects",
+          "name": "Projects",
+          "icon": "media/overleaf.svg",
+          "contextualTitle": "Overleaf"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "overleafMcp.projects",
+        "contents": "Sign in to Overleaf to browse and edit all your projects here, and to give AI assistants access through MCP.\n[Sign in](command:overleafMcp.signIn)\nSigning in with the browser supports Google, ORCID, institutional SSO and passwords. Self-hosted Overleaf? [Change the server](command:overleafMcp.changeServer) first.",
+        "when": "!overleafMcp.signedIn"
+      }
+    ],
+    "commands": [
+      {
+        "command": "overleafMcp.signIn",
+        "title": "Sign In",
+        "category": "Overleaf",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "overleafMcp.signOut",
+        "title": "Sign Out",
+        "category": "Overleaf",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "overleafMcp.changeServer",
+        "title": "Use a Different Overleaf Server…",
+        "category": "Overleaf",
+        "icon": "$(server)"
+      },
+      {
+        "command": "overleafMcp.refresh",
+        "title": "Refresh",
+        "category": "Overleaf",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "overleafMcp.filter",
+        "title": "Filter Projects…",
+        "category": "Overleaf",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "overleafMcp.clearFilter",
+        "title": "Clear Filter",
+        "category": "Overleaf",
+        "icon": "$(clear-filter)"
+      },
+      {
+        "command": "overleafMcp.pinProject",
+        "title": "Pin for AI",
+        "category": "Overleaf",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "overleafMcp.unpinProject",
+        "title": "Unpin",
+        "category": "Overleaf",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "overleafMcp.openInBrowser",
+        "title": "Open on Overleaf",
+        "category": "Overleaf",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "overleafMcp.copyProjectId",
+        "title": "Copy Project ID",
+        "category": "Overleaf",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "overleafMcp.newProject",
+        "title": "New Project…",
+        "category": "Overleaf",
+        "icon": "$(add)"
+      },
+      {
+        "command": "overleafMcp.newFile",
+        "title": "New File…",
+        "category": "Overleaf",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "overleafMcp.newFolder",
+        "title": "New Folder…",
+        "category": "Overleaf",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "overleafMcp.uploadFiles",
+        "title": "Upload Files…",
+        "category": "Overleaf",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "overleafMcp.rename",
+        "title": "Rename / Move…",
+        "category": "Overleaf",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "overleafMcp.delete",
+        "title": "Delete",
+        "category": "Overleaf",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "overleafMcp.download",
+        "title": "Download…",
+        "category": "Overleaf",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "overleafMcp.compile",
+        "title": "Compile and Show PDF",
+        "category": "Overleaf",
+        "icon": "$(play)"
+      },
+      {
+        "command": "overleafMcp.openPdfPreview",
+        "title": "Open PDF Preview",
+        "category": "Overleaf",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "overleafMcp.recompile",
+        "title": "Recompile",
+        "category": "Overleaf",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "overleafMcp.stopCompile",
+        "title": "Stop Compiling",
+        "category": "Overleaf",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "overleafMcp.syncToPdf",
+        "title": "Show in PDF",
+        "category": "Overleaf",
+        "icon": "$(target)"
+      },
+      {
+        "command": "overleafMcp.downloadPdf",
+        "title": "Download PDF…",
+        "category": "Overleaf",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "overleafMcp.showCompileLog",
+        "title": "Show Compile Log",
+        "category": "Overleaf",
+        "icon": "$(output)"
+      },
+      {
+        "command": "overleafMcp.search",
+        "title": "Search in Projects…",
+        "category": "Overleaf",
+        "icon": "$(search)"
+      },
+      {
+        "command": "overleafMcp.connectClient",
+        "title": "Connect an AI Client…",
+        "category": "Overleaf",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "overleafMcp.showMcpInfo",
+        "title": "Show MCP Connection Details",
+        "category": "Overleaf",
+        "icon": "$(info)"
+      },
+      {
+        "command": "overleafMcp.accountMenu",
+        "title": "Account",
+        "category": "Overleaf",
+        "icon": "$(account)"
+      },
+      {
+        "command": "overleafMcp.openSettings",
+        "title": "Open Settings",
+        "category": "Overleaf",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "overleafMcp.syncToFolder",
+        "title": "Sync to Local Folder…",
+        "category": "Overleaf",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "overleafMcp.stopSync",
+        "title": "Stop Syncing to Local Folder",
+        "category": "Overleaf",
+        "icon": "$(sync-ignored)"
+      },
+      {
+        "command": "overleafMcp.syncNow",
+        "title": "Sync Now",
+        "category": "Overleaf",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "overleafMcp.openMirrorFolder",
+        "title": "Open Local Folder",
+        "category": "Overleaf",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "overleafMcp.syncMenu",
+        "title": "Local Sync…",
+        "category": "Overleaf",
+        "icon": "$(sync)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "overleafMcp.newProject",
+          "when": "view == overleafMcp.projects && overleafMcp.signedIn",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overleafMcp.search",
+          "when": "view == overleafMcp.projects && overleafMcp.signedIn",
+          "group": "navigation@2"
+        },
+        {
+          "command": "overleafMcp.filter",
+          "when": "view == overleafMcp.projects && overleafMcp.signedIn && !overleafMcp.filtered",
+          "group": "navigation@3"
+        },
+        {
+          "command": "overleafMcp.clearFilter",
+          "when": "view == overleafMcp.projects && overleafMcp.filtered",
+          "group": "navigation@3"
+        },
+        {
+          "command": "overleafMcp.refresh",
+          "when": "view == overleafMcp.projects && overleafMcp.signedIn",
+          "group": "navigation@4"
+        },
+        {
+          "command": "overleafMcp.connectClient",
+          "when": "view == overleafMcp.projects",
+          "group": "1_mcp@1"
+        },
+        {
+          "command": "overleafMcp.showMcpInfo",
+          "when": "view == overleafMcp.projects",
+          "group": "1_mcp@2"
+        },
+        {
+          "command": "overleafMcp.changeServer",
+          "when": "view == overleafMcp.projects",
+          "group": "2_account@1"
+        },
+        {
+          "command": "overleafMcp.openSettings",
+          "when": "view == overleafMcp.projects",
+          "group": "2_account@2"
+        },
+        {
+          "command": "overleafMcp.signOut",
+          "when": "view == overleafMcp.projects && overleafMcp.signedIn",
+          "group": "2_account@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "overleafMcp.pinProject",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project(\\.mirrored)?$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "overleafMcp.unpinProject",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project\\.pinned/",
+          "group": "inline@1"
+        },
+        {
+          "command": "overleafMcp.openInBrowser",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "inline@2"
+        },
+        {
+          "command": "overleafMcp.openPdfPreview",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "inline@3"
+        },
+        {
+          "command": "overleafMcp.openPdfPreview",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "1_project@1"
+        },
+        {
+          "command": "overleafMcp.downloadPdf",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "1_project@1"
+        },
+        {
+          "command": "overleafMcp.openInBrowser",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "1_project@2"
+        },
+        {
+          "command": "overleafMcp.pinProject",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project(\\.mirrored)?$/",
+          "group": "1_project@3"
+        },
+        {
+          "command": "overleafMcp.unpinProject",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project\\.pinned/",
+          "group": "1_project@3"
+        },
+        {
+          "command": "overleafMcp.copyProjectId",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "1_project@4"
+        },
+        {
+          "command": "overleafMcp.newFile",
+          "when": "view == overleafMcp.projects && (viewItem =~ /^project/ || viewItem == entry.folder)",
+          "group": "2_create@1"
+        },
+        {
+          "command": "overleafMcp.newFolder",
+          "when": "view == overleafMcp.projects && (viewItem =~ /^project/ || viewItem == entry.folder)",
+          "group": "2_create@2"
+        },
+        {
+          "command": "overleafMcp.uploadFiles",
+          "when": "view == overleafMcp.projects && (viewItem =~ /^project/ || viewItem == entry.folder)",
+          "group": "2_create@3"
+        },
+        {
+          "command": "overleafMcp.download",
+          "when": "view == overleafMcp.projects && viewItem =~ /^entry\\.(doc|file)$/",
+          "group": "3_entry@1"
+        },
+        {
+          "command": "overleafMcp.rename",
+          "when": "view == overleafMcp.projects && viewItem =~ /^entry\\./",
+          "group": "3_entry@2"
+        },
+        {
+          "command": "overleafMcp.delete",
+          "when": "view == overleafMcp.projects && viewItem =~ /^entry\\./",
+          "group": "3_entry@3"
+        },
+        {
+          "command": "overleafMcp.syncToFolder",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/ && viewItem =~ /^(?!.*mirrored)/",
+          "group": "4_sync@1"
+        },
+        {
+          "command": "overleafMcp.syncNow",
+          "when": "view == overleafMcp.projects && viewItem =~ /mirrored/",
+          "group": "4_sync@1"
+        },
+        {
+          "command": "overleafMcp.openMirrorFolder",
+          "when": "view == overleafMcp.projects && viewItem =~ /mirrored/",
+          "group": "4_sync@2"
+        },
+        {
+          "command": "overleafMcp.stopSync",
+          "when": "view == overleafMcp.projects && viewItem =~ /mirrored/",
+          "group": "4_sync@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "overleafMcp.rename",
+          "when": "false"
+        },
+        {
+          "command": "overleafMcp.delete",
+          "when": "false"
+        },
+        {
+          "command": "overleafMcp.download",
+          "when": "false"
+        },
+        {
+          "command": "overleafMcp.clearFilter",
+          "when": "overleafMcp.filtered"
+        },
+        {
+          "command": "overleafMcp.signOut",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.syncNow",
+          "when": "false"
+        },
+        {
+          "command": "overleafMcp.openMirrorFolder",
+          "when": "false"
+        },
+        {
+          "command": "overleafMcp.stopSync",
+          "when": "false"
+        },
+        {
+          "command": "overleafMcp.stopCompile",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.downloadPdf",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.showCompileLog",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.syncToPdf",
+          "when": "overleafMcp.signedIn"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "overleafMcp.openPdfPreview",
+          "when": "resourceScheme == overleaf && resourceExtname =~ /^\\.(tex|ltx|bib|cls|sty|bbx|cbx|Rtex|Rnw)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overleafMcp.syncToPdf",
+          "when": "resourceScheme == overleaf && resourceExtname =~ /^\\.(tex|ltx|bib|cls|sty|bbx|cbx|Rtex|Rnw)$/",
+          "group": "1_overleaf@1"
+        },
+        {
+          "command": "overleafMcp.recompile",
+          "when": "activeWebviewPanelId == 'overleafMcp.pdfPreview'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overleafMcp.downloadPdf",
+          "when": "activeWebviewPanelId == 'overleafMcp.pdfPreview'",
+          "group": "1_overleaf@1"
+        },
+        {
+          "command": "overleafMcp.showCompileLog",
+          "when": "activeWebviewPanelId == 'overleafMcp.pdfPreview'",
+          "group": "1_overleaf@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "overleafMcp.syncToPdf",
+          "when": "resourceScheme == overleaf && resourceExtname =~ /^\\.(tex|ltx|bib|cls|sty|bbx|cbx|Rtex|Rnw)$/ && editorTextFocus",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Overleaf MCP",
+      "properties": {
+        "overleafMcp.serverUrl": {
+          "type": "string",
+          "default": "https://www.overleaf.com",
+          "description": "Overleaf server to sign in to: overleaf.com or a self-hosted Overleaf (Community Edition / Server Pro).",
+          "order": 1
+        },
+        "overleafMcp.mcp.httpServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Serve the MCP tools at `http://127.0.0.1:<port>/mcp` (bearer-token protected) while VS Code runs. VS Code itself and HTTP-capable clients use it; stdio clients do not need it.",
+          "order": 10
+        },
+        "overleafMcp.mcp.httpServer.port": {
+          "type": "number",
+          "default": 39847,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Port of the local MCP HTTP endpoint.",
+          "order": 11
+        },
+        "overleafMcp.mcp.shareSessionWithExternalClients": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Save the Overleaf session to `~/.overleaf-mcp/credentials.json` (readable only by you) so MCP servers started by other apps can use it. When off, only VS Code and the HTTP endpoint have access.",
+          "order": 12
+        },
+        "overleafMcp.projects.showArchived": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived projects in the panel.",
+          "order": 20
+        },
+        "overleafMcp.projects.showTrashed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show trashed projects in the panel.",
+          "order": 21
+        },
+        "overleafMcp.liveUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reload open Overleaf files when collaborators (or AI tools) change them.",
+          "order": 30
+        },
+        "overleafMcp.browserPath": {
+          "type": "string",
+          "default": "",
+          "description": "Browser used for signing in (Chrome, Edge, Brave or Chromium). Empty = detect automatically.",
+          "order": 40
+        },
+        "overleafMcp.mirror.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Resume syncing projects with their local folders when VS Code starts.",
+          "order": 50
+        },
+        "overleafMcp.mirror.defaultParent": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder in which new local copies are created (default `~/Overleaf`).",
+          "order": 51
+        },
+        "overleafMcp.pdf.autoCompile": {
+          "type": "string",
+          "enum": [
+            "onChange",
+            "onSave",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Recompile whenever the project changes: your saves, collaborators' edits and AI tools' edits.",
+            "Recompile when you save a file of the project in VS Code (Overleaf files and synced local copies).",
+            "Only compile when you press Recompile."
+          ],
+          "default": "onChange",
+          "markdownDescription": "When an open PDF preview recompiles by itself. Previews in background tabs catch up when they are shown again.",
+          "order": 40
+        }
+      }
+    },
+    "resourceLabelFormatters": [
+      {
+        "scheme": "overleaf",
+        "formatting": {
+          "label": "${path}",
+          "separator": "/",
+          "workspaceSuffix": "Overleaf",
+          "stripPathStartingSeparator": true
+        }
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "overleafMcp.servers",
+        "label": "Overleaf"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "overleafMcp.gettingStarted",
+        "title": "Get started with Overleaf MCP",
+        "description": "Sign in, browse your projects, and give an AI assistant access to them.",
+        "steps": [
+          {
+            "id": "signIn",
+            "title": "Sign in to Overleaf",
+            "description": "Sign in once; every Overleaf feature in VS Code uses this session.\n[Sign In](command:overleafMcp.signIn)",
+            "media": {
+              "markdown": "media/walkthrough/sign-in.md"
+            },
+            "completionEvents": [
+              "onContext:overleafMcp.signedIn"
+            ]
+          },
+          {
+            "id": "projects",
+            "title": "Browse your projects",
+            "description": "All your projects are in the Overleaf panel; files open and save live.\n[Show Projects](command:workbench.view.extension.overleafMcp)",
+            "media": {
+              "markdown": "media/walkthrough/projects.md"
+            },
+            "completionEvents": [
+              "onView:overleafMcp.projects"
+            ]
+          },
+          {
+            "id": "preview",
+            "title": "Compile and preview the PDF",
+            "description": "Compile on Overleaf and see the PDF next to your editor; it recompiles as you save. Double-click the PDF to jump to the source.\n[Open PDF Preview](command:overleafMcp.openPdfPreview)",
+            "media": {
+              "markdown": "media/walkthrough/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:overleafMcp.openPdfPreview"
+            ]
+          },
+          {
+            "id": "connect",
+            "title": "Connect an AI assistant",
+            "description": "Give your assistant tools to search, read, edit and compile your projects.\n[Connect an AI Client](command:overleafMcp.connectClient)",
+            "media": {
+              "markdown": "media/walkthrough/connect.md"
+            },
+            "completionEvents": [
+              "onCommand:overleafMcp.connectClient"
+            ]
+          },
+          {
+            "id": "pin",
+            "title": "Pin the paper you are working on",
+            "description": "Pinned projects are what the assistant works on by default.\n[Pin a Project](command:overleafMcp.pinProject)",
+            "media": {
+              "markdown": "media/walkthrough/pin.md"
+            },
+            "completionEvents": [
+              "onCommand:overleafMcp.pinProject"
+            ]
+          },
+          {
+            "id": "sync",
+            "title": "Optional: sync to a local folder",
+            "description": "Keep a project in two-way sync with a folder for local builds and file-based tools.\n[Sync to Local Folder](command:overleafMcp.syncToFolder)",
+            "media": {
+              "markdown": "media/walkthrough/sync.md"
+            },
+            "completionEvents": [
+              "onCommand:overleafMcp.syncToFolder"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --dir test/unit",
+    "test:integration": "vitest run --dir test/integration --no-file-parallelism",
+    "start": "node dist/mcp-server.js",
+    "start:http": "node dist/mcp-server.js --http",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "test:extension": "node esbuild.mjs --tests && node dist-test/run.js",
+    "test:vsix": "node esbuild.mjs --tests && vsce package --no-dependencies -o dist-test/overleaf-mcp.vsix && node dist-test/run.js dist-test/overleaf-mcp.vsix",
+    "package:server": "node scripts/package-server.mjs",
+    "package:release": "node scripts/package-server.mjs --vsix"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@types/diff-match-patch": "^1.0.36",
+    "@types/node": "^22.20.5",
+    "@types/vscode": "1.101.0",
+    "@types/ws": "^8.18.2",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "diff-match-patch": "^1.0.5",
+    "esbuild": "^0.28.2",
+    "fflate": "^0.8.3",
+    "minisearch": "^7.2.0",
+    "pdfjs-dist": "6.3.289",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.4",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
   }
 }
