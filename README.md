@@ -5,7 +5,7 @@
 
 # Overleaf MCP
 
-A VS Code extension and MCP server for Overleaf. Sign in once, see **all** your Overleaf projects in a VS Code side panel, open and edit them live, compile and read the PDF right next to your source, sync any project to a local folder, and give AI assistants (anything that speaks the Model Context Protocol: Claude Code, Claude Desktop, Codex, Copilot, Gemini CLI, Cursor, …) the tools to search, read, edit, and compile your papers — one project or many at a time. 🧠
+A VS Code extension and MCP server for Overleaf. Sign in once, see **all** your Overleaf projects in a VS Code side panel, open and edit them live, compile and read the PDF right next to your source, sync any project to a local folder, and give AI assistants (anything that speaks the Model Context Protocol) the tools to search, read, edit, and compile your papers — one project or many at a time. 🧠
 
 🔗 **Repo:** https://github.com/GhoshSrinjoy/Overleaf-mcp · ⬇️ **Downloads:** [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest)
 
@@ -42,7 +42,7 @@ Overleaf is great for collaboration but closed to tooling: copy-pasting LaTeX in
 - 🩺 **Compile problems** in the Problems panel, on the Overleaf files and on synced local copies.
 - 🔎 **Search** across projects (the same engine the AI uses).
 - 🔐 **Sign in with the browser** (Google, ORCID, institutional SSO, password, captcha — whatever Overleaf asks), by pasting a session cookie, or with email/password on self-hosted servers.
-- 🔌 **One-click AI client setup** (Claude Code, Codex CLI, Copilot CLI, Gemini CLI, Claude Desktop, Cursor, Windsurf, or every one installed at once) and automatic registration with VS Code's built-in MCP support.
+- 🔌 **One-click AI client setup** for command-line assistants, desktop apps and editors ([list](#connecting-ai-clients)), or every one installed at once, and automatic registration with VS Code's built-in MCP support.
 
 ### MCP server
 
