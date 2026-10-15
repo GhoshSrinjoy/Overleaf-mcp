@@ -1,0 +1,8 @@
+**
+!dist/extension.js
+!dist/mcp-server.js
+!media/**
+!package.json
+!README.md
+!LICENSE
+!CHANGELOG.md

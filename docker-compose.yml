@@ -1,24 +1,21 @@
+# Runs the MCP server in a container (stdio). MCP clients start it with:
+#   docker compose run --rm -T mcp
+# Access to projects comes from either
+#   - projects.json with Git tokens (paid Overleaf plans with Git integration), or
+#   - an Overleaf web session: `docker compose run --rm mcp login --cookie <value>` once,
+#     or OVERLEAF_COOKIES / OVERLEAF_SESSION below.
 services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-
   mcp:
     build: .
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - PROJECTS_FILE=/app/projects.json
-      - REQUEST_CONCURRENCY=4
-      - OVERLEAF_GIT_AUTHOR_NAME=Srinjoy Ghosh
-      - OVERLEAF_GIT_AUTHOR_EMAIL=srinjoy.ghosh@fau.de
-    volumes:
-      - ./projects.json:/app/projects.json:ro
-      - ./data/cache:/app/temp
-    depends_on:
-      - redis
-    restart: unless-stopped
+    image: overleaf-mcp
     stdin_open: true
     tty: false
+    environment:
+      - PROJECTS_FILE=/app/projects.json
+      - OVERLEAF_GIT_AUTHOR_NAME=Srinjoy Ghosh
+      - OVERLEAF_GIT_AUTHOR_EMAIL=srinjoy.ghosh@fau.de
+      # - OVERLEAF_SESSION=<overleaf_session2 cookie value>
+      # - OVERLEAF_SERVER_URL=https://www.overleaf.com
+    volumes:
+      - ./projects.json:/app/projects.json:ro
+      - ./data:/data

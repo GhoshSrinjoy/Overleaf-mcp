@@ -1,7 +1,13 @@
 node_modules
-npm-debug.log
-.git
+dist
+dist-test
+.vscode-test
+data
 temp
-projects.json
+test
+*.vsix
+*.log
+.git
 .env
+projects.json
 .DS_Store
