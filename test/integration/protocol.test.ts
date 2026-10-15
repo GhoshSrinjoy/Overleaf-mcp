@@ -91,4 +91,27 @@ describe.skipIf(!available)('Overleaf protocol against a local Community Edition
     const text = new TextDecoder().decode(await web.downloadOutputFile(log!, compile));
     expect(text).toContain('This is');
   }, 240_000);
+
+  it('maps a source line into the PDF and a PDF point back to the source (SyncTeX)', async () => {
+    let compile = await web.compile(projectId, { rootDocId: realtime.project.rootDoc_id ?? undefined });
+    // The previous test compiled moments ago.
+    for (let attempt = 0; attempt < 5 && compile.status === 'too-recently-compiled'; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      compile = await web.compile(projectId, { rootDocId: realtime.project.rootDoc_id ?? undefined });
+    }
+    expect(compile.status).toBe('success');
+    const pdf = compile.outputFiles?.find((f) => f.path === 'output.pdf');
+    const build = { editorId: compile.editorId, buildId: pdf?.build, clsiServerId: compile.clsiServerId };
+    const lines = (await realtime.readDoc(realtime.tree.find('main.tex')!.id)).text.split('\n');
+    const begin = lines.findIndex((line) => line.includes('\\begin{document}'));
+    const line = lines.findIndex((text, i) => i > begin && /^[A-Za-z]/.test(text.trim())) + 1;
+    expect(line).toBeGreaterThan(begin + 1);
+    const boxes = await web.syncFromCode(projectId, build, 'main.tex', line, 0);
+    expect(boxes.length).toBeGreaterThan(0);
+    const [box] = boxes;
+    expect(box.page).toBeGreaterThanOrEqual(1);
+    const code = await web.syncFromPdf(projectId, build, box.page, box.h + box.width / 2, box.v);
+    expect(code[0]?.file).toMatch(/main\.tex$/);
+    expect(code[0]?.line).toBeGreaterThan(begin);
+  }, 240_000);
 });

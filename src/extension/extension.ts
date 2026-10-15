@@ -4,10 +4,12 @@ import { OverleafService } from '../core/service';
 import { resolveDataPaths } from '../core/store/paths';
 import { AuthManager } from './auth';
 import { registerCommands } from './commands';
+import { CompileController } from './compileController';
 import { createOutputLogger } from './logger';
 import { McpEndpoint, installRipgrep, installServerCopy, registerWithVsCode } from './mcp';
 import { MirrorManager } from './mirrors';
 import { OverleafFileSystem, SCHEME } from './overleafFs';
+import { PdfPreviewManager } from './pdfPreview';
 import { ProjectsView } from './projectsView';
 
 export interface OverleafExtensionApi {
@@ -16,6 +18,8 @@ export interface OverleafExtensionApi {
   endpoint: McpEndpoint;
   view: ProjectsView;
   mirrors: MirrorManager;
+  compiler: CompileController;
+  previews: PdfPreviewManager;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<OverleafExtensionApi> {
@@ -37,6 +41,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Overle
   const treeView = vscode.window.createTreeView('overleafMcp.projects', { treeDataProvider: view, showCollapseAll: true });
   const endpoint = new McpEndpoint(context, service, logger);
   const mirrors = new MirrorManager(service, logger);
+  // Compile problems also show on synced local copies.
+  const compiler = new CompileController(service, context.globalState, logger, async (projectId) => (mirrors.isRunning(projectId) ? mirrors.dirOf(projectId) : undefined));
+  const previews = new PdfPreviewManager(context, service, auth, compiler, mirrors, logger);
   let serverPath: string | undefined;
 
   context.subscriptions.push(
@@ -46,12 +53,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Overle
     treeView,
     endpoint,
     mirrors,
+    compiler,
+    previews,
     fileSystem,
     vscode.workspace.registerFileSystemProvider(SCHEME, fileSystem, { isCaseSensitive: true }),
     { dispose: () => service.dispose() },
   );
 
-  registerCommands({ context, service, auth, view, endpoint, mirrors, paths, serverPath: () => serverPath, logger });
+  registerCommands({ context, service, auth, view, endpoint, mirrors, compiler, previews, paths, serverPath: () => serverPath, logger });
   registerWithVsCode(context, endpoint, auth, paths, () => serverPath);
 
   const status = vscode.window.createStatusBarItem('overleafMcp.account', vscode.StatusBarAlignment.Left, 20);
@@ -76,6 +85,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Overle
       void mirrors.stopAll().then(() => {
         service.dispose();
         fileSystem.reset();
+        previews.reconnect();
         view.refresh();
         updateUi();
         if (session) void mirrors.resumeAll();
@@ -101,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Overle
   void installRipgrep(paths, service, logger).catch((error) => logger.warn('ripgrep setup failed; the built-in search will be used', error));
   if (auth.current) void mirrors.resumeAll().catch((error) => logger.warn('Could not resume local syncs', error));
 
-  return { service, auth, endpoint, view, mirrors };
+  return { service, auth, endpoint, view, mirrors, compiler, previews };
 }
 
 export function deactivate(): void {

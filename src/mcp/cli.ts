@@ -104,7 +104,7 @@ async function main(): Promise<void> {
 
   const projectsFile = (typeof flags.get('projects') === 'string' ? (flags.get('projects') as string) : undefined) ?? process.env.PROJECTS_FILE ?? path.join(paths.root, 'projects.json');
   const gitProjects = await loadGitProjects(projectsFile);
-  const service = new OverleafService({ paths, logger, session: new FileSessionSource(store, paths.credentialsFile), gitProjects });
+  const service = new OverleafService({ paths, logger, session: new FileSessionSource(store, paths.credentialsFile, logger), gitProjects });
 
   if (command === 'status') {
     const status = await service.status();

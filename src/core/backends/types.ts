@@ -1,4 +1,4 @@
-import { CompileResponse, EntityType, OtType, ProjectSummary, Tag } from '../overleaf/types';
+import { BuildRef, CompileResponse, EntityType, OtType, ProjectSummary, Tag } from '../overleaf/types';
 import { HistoryDiffResponse, HistoryUpdatesResponse } from '../overleaf/webClient';
 import { SkippedFile } from '../store/snapshotCache';
 
@@ -81,4 +81,8 @@ export interface CompileOutput {
   log?: string;
   bibtexLog?: string;
   pdf?: () => Promise<Uint8Array>;
+  /** Identifies this build for SyncTeX lookups. */
+  build: BuildRef;
+  /** Main document the compile used, as a project path. */
+  rootPath?: string;
 }

@@ -2,16 +2,17 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { LogEntry } from '../core/latex/logParser';
 import { OverleafService } from '../core/service';
 import { DataPaths } from '../core/store/paths';
 import { errorMessage } from '../core/util/errors';
 import { Logger } from '../core/util/log';
 import { AuthManager } from './auth';
 import { connectClient } from './clientSetup';
+import { CompileController } from './compileController';
 import { McpEndpoint } from './mcp';
 import { MirrorManager } from './mirrors';
-import { overleafUri, parseOverleafUri } from './overleafFs';
+import { SCHEME, overleafUri, parseOverleafUri } from './overleafFs';
+import { PdfPreviewManager } from './pdfPreview';
 import { EntryNode, Node, ProjectNode, ProjectsView } from './projectsView';
 
 export interface CommandContext {
@@ -21,6 +22,8 @@ export interface CommandContext {
   view: ProjectsView;
   endpoint: McpEndpoint;
   mirrors: MirrorManager;
+  compiler: CompileController;
+  previews: PdfPreviewManager;
   paths: DataPaths;
   serverPath: () => string | undefined;
   logger: Logger;
@@ -57,9 +60,8 @@ function validName(value: string): string | undefined {
   return undefined;
 }
 
-export function registerCommands(ctx: CommandContext): vscode.DiagnosticCollection {
-  const { context, service, auth, view, endpoint, mirrors, paths, logger } = ctx;
-  const diagnostics = vscode.languages.createDiagnosticCollection('overleaf');
+export function registerCommands(ctx: CommandContext): void {
+  const { context, service, auth, view, endpoint, mirrors, compiler, previews, paths, logger } = ctx;
   const register = (id: string, handler: (...args: never[]) => unknown) =>
     context.subscriptions.push(
       vscode.commands.registerCommand(id, async (...args: never[]) => {
@@ -170,37 +172,48 @@ export function registerCommands(ctx: CommandContext): vscode.DiagnosticCollecti
     await fs.writeFile(target.fsPath, data);
   });
 
-  register('overleafMcp.compile', async (node?: Node) => {
-    const editorUri = vscode.window.activeTextEditor?.document.uri;
-    const project =
-      projectOf(node) ??
-      (editorUri?.scheme === 'overleaf' ? { id: parseOverleafUri(editorUri).projectId, name: parseOverleafUri(editorUri).projectId } : undefined) ??
-      (await pickProject(service, 'Compile which project?'));
-    if (!project) return;
-    const pdfPath = path.join(os.tmpdir(), 'overleaf-mcp', `${project.id}.pdf`);
-    const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Compiling ${project.name}…` }, () =>
-      service.compile(project.id, { savePdfTo: pdfPath }),
-    );
-    const byFile = new Map<string, vscode.Diagnostic[]>();
-    const add = (entry: LogEntry, severity: vscode.DiagnosticSeverity) => {
-      if (!entry.file) return;
-      const line = Math.max(0, (entry.line ?? 1) - 1);
-      const diagnostic = new vscode.Diagnostic(new vscode.Range(line, 0, line, 1000), entry.message, severity);
-      diagnostic.source = 'Overleaf';
-      const key = overleafUri(project.id, entry.file).toString();
-      byFile.set(key, [...(byFile.get(key) ?? []), diagnostic]);
-    };
-    for (const entry of [...result.log.errors, ...result.bibtex.filter((e) => e.level === 'error')]) add(entry, vscode.DiagnosticSeverity.Error);
-    for (const entry of [...result.log.warnings, ...result.bibtex.filter((e) => e.level === 'warning')]) add(entry, vscode.DiagnosticSeverity.Warning);
-    for (const entry of result.log.typesetting) add(entry, vscode.DiagnosticSeverity.Information);
-    for (const [uri] of diagnostics) if (parseOverleafUri(uri).projectId === project.id) diagnostics.delete(uri);
-    for (const [uri, list] of byFile) diagnostics.set(vscode.Uri.parse(uri), list);
+  /** The project a command is about: a panel node or editor, the focused PDF preview, or the active editor's project. */
+  const contextProject = async (target: unknown, placeHolder: string): Promise<{ id: string; name?: string } | undefined> => {
+    const fromNode = projectOf(target as Node | undefined);
+    if (fromNode) return fromNode;
+    if (target instanceof vscode.Uri && target.scheme === SCHEME) return { id: parseOverleafUri(target).projectId };
+    const previewed = previews.activeProjectId;
+    if (previewed) return { id: previewed };
+    const position = await previews.activePosition();
+    if (position) return { id: position.projectId };
+    return pickProject(service, placeHolder);
+  };
 
-    const summary = `${result.project.name}: ${result.status} — ${result.log.errors.length} error(s), ${result.log.warnings.length} warning(s)`;
-    const actions = result.pdfPath ? ['Open PDF', 'Show Problems'] : ['Show Problems'];
-    const choice = await (result.log.errors.length || result.status !== 'success' ? vscode.window.showWarningMessage : vscode.window.showInformationMessage)(summary, ...actions);
-    if (choice === 'Open PDF' && result.pdfPath) await vscode.env.openExternal(vscode.Uri.file(result.pdfPath));
-    if (choice === 'Show Problems') await vscode.commands.executeCommand('workbench.actions.view.problems');
+  register('overleafMcp.openPdfPreview', async (target?: unknown) => {
+    const project = await contextProject(target, 'Preview which project?');
+    if (project) await previews.open(project);
+  });
+  const compileAndShow = async (target?: unknown) => {
+    const project = await contextProject(target, 'Compile which project?');
+    if (project) await previews.open(project, { compile: true });
+  };
+  register('overleafMcp.compile', compileAndShow);
+  register('overleafMcp.recompile', compileAndShow);
+  register('overleafMcp.stopCompile', async (target?: unknown) => {
+    const project = await contextProject(target, 'Stop compiling which project?');
+    if (project) await compiler.stop(project.id);
+  });
+  register('overleafMcp.syncToPdf', async () => {
+    const position = await previews.activePosition();
+    if (!position) throw new Error('Put the cursor in a file of an Overleaf project (or of a project synced to a local folder) first.');
+    await previews.showInPdf(position);
+  });
+  register('overleafMcp.downloadPdf', async (target?: unknown) => {
+    const project = await contextProject(target, 'Download the PDF of which project?');
+    if (!project) return;
+    if (!compiler.get(project.id)?.pdf) {
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Compiling ${project.name ?? 'the project'}…` }, () => compiler.whenDone(project.id));
+    }
+    await previews.download(project.id);
+  });
+  register('overleafMcp.showCompileLog', async (target?: unknown) => {
+    const project = await contextProject(target, 'Show the compile log of which project?');
+    if (project) await previews.showLog(project.id);
   });
 
   register('overleafMcp.search', async () => {
@@ -295,6 +308,4 @@ export function registerCommands(ctx: CommandContext): vscode.DiagnosticCollecti
   });
   register('overleafMcp.openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ghoshsrinjoy.overleaf-mcp'));
 
-  context.subscriptions.push(diagnostics);
-  return diagnostics;
 }

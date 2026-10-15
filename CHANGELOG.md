@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+- PDF preview in VS Code: compile on Overleaf and read the PDF beside the editor (pdf.js). Recompile and stop, automatic recompiles on any change (your saves, collaborators, AI edits) or only on save (`overleafMcp.pdf.autoCompile`), draft mode, stop on first error, errors and warnings with links to the line, zoom, page navigation, find, save and open externally, and the raw compile log. Restored after restarting VS Code.
+- SyncTeX in both directions: double-click the PDF to open the source line; **Show in PDF** (editor context menu and title bar) highlights where a line ended up. Works for Overleaf files and synced local copies.
+- Compile problems are also shown on synced local copies.
+- AI client setup for Codex CLI, GitHub Copilot CLI and Gemini CLI, and **Every AI tool found on this computer** to configure all installed assistants at once.
+- `sign_in` tool: an assistant can open the Overleaf login page itself; the session is shared with every assistant on the computer (`OVERLEAF_SERVER_URL` picks a self-hosted server).
+- Release downloads: the server as one file (`overleaf-mcp.js`), an npm package (`overleaf-live-mcp`), a Claude Desktop bundle (`overleaf-mcp.mcpb`) and the extension (`overleaf-mcp.vsix`), built with `npm run package:release`.
+
+### Changed
+- **Compile** in the panel now opens the PDF preview.
+- Compiles that Overleaf turns away for following too closely on another are retried after a short wait.
+- Setup commands run in Command Prompt on Windows, so the `--` before the server command is not lost.
+
 ## 2.0.0
 
 A rewrite as a VS Code extension plus a standalone MCP server sharing one TypeScript core.

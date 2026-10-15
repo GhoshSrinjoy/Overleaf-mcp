@@ -22,6 +22,9 @@ export class MirrorManager implements vscode.Disposable {
   private readonly retryTimers = new Map<string, NodeJS.Timeout>();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
+  private readonly pushed = new vscode.EventEmitter<string>();
+  /** Local edits of a project were sent to Overleaf (fires with the project id). */
+  readonly onDidPushLocalChanges = this.pushed.event;
   private readonly status: vscode.StatusBarItem;
   private readonly holder = `vscode-${vscode.env.sessionId}`;
 
@@ -37,6 +40,18 @@ export class MirrorManager implements vscode.Disposable {
   /** Local folder a project is synced to (recorded in shared settings), if any. */
   async dirOf(projectId: string): Promise<string | undefined> {
     return (await this.service.settings.read()).mirrors?.find((m) => m.projectId === projectId)?.dir;
+  }
+
+  /** The synced project a local file belongs to, with its project path. */
+  async projectOfFile(fsPath: string): Promise<{ projectId: string; dir: string; path: string } | undefined> {
+    const fold = (value: string) => (process.platform === 'win32' ? value.toLowerCase() : value);
+    for (const mirror of (await this.service.settings.read()).mirrors ?? []) {
+      const relative = path.relative(mirror.dir, fsPath);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
+      if (fold(path.join(mirror.dir, relative)) !== fold(path.resolve(fsPath))) continue;
+      return { projectId: mirror.projectId, dir: mirror.dir, path: relative.split(path.sep).join('/') };
+    }
+    return undefined;
   }
 
   isRunning(projectId: string): boolean {
@@ -124,7 +139,7 @@ export class MirrorManager implements vscode.Disposable {
       dir,
       logger: this.logger,
       onStatus: (status) => this.onStatus(projectId, status),
-      onReport: (report) => this.onReport(name, dir, report),
+      onReport: (report) => this.onReport(projectId, name, dir, report),
     });
     this.running.set(projectId, { mirror, lease, name });
     try {
@@ -157,8 +172,9 @@ export class MirrorManager implements vscode.Disposable {
     this.updateStatusBar();
   }
 
-  private onReport(name: string, dir: string, report: SyncReport): void {
+  private onReport(projectId: string, name: string, dir: string, report: SyncReport): void {
     const moved = [...report.pulled, ...report.pushed, ...report.merged, ...report.deletedLocal, ...report.deletedRemote];
+    if (report.pushed.length || report.merged.length || report.deletedLocal.length) this.pushed.fire(projectId);
     if (moved.length) vscode.window.setStatusBarMessage(`$(sync) ${name}: synced ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` +${moved.length - 3}` : ''}`, 4000);
     for (const file of report.conflicts) {
       void vscode.window
@@ -233,5 +249,6 @@ export class MirrorManager implements vscode.Disposable {
     void this.stopAll();
     this.status.dispose();
     this.changed.dispose();
+    this.pushed.dispose();
   }
 }

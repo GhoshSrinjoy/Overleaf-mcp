@@ -28,7 +28,7 @@ export function notLoggedIn(serverUrl?: string): OverleafError {
   const where = serverUrl ? ` (${serverUrl})` : '';
   return new OverleafError(
     'NOT_LOGGED_IN',
-    `Not signed in to Overleaf${where}, or the session has expired. Sign in again from the Overleaf panel in VS Code (command "Overleaf: Sign In").`,
+    `Not signed in to Overleaf${where}, or the session has expired. Use the sign_in tool (it opens the Overleaf login page), or sign in from the Overleaf panel in VS Code.`,
   );
 }
 

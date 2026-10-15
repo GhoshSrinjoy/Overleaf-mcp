@@ -8,7 +8,7 @@ import { LogEntry, ParsedLog, parseBibtexLog, parseLatexLog } from './latex/logP
 import { ProjectOutline, SectionSlice, buildProjectOutline, findHeading, guessRootFile, parseHeadings, sliceSection } from './latex/outline';
 import { SESSION_COOKIE_NAMES } from './overleaf/cookies';
 import { TextEdit, applyTextEdits, normalizeNewlines } from './overleaf/ot';
-import { ProjectSummary, Tag } from './overleaf/types';
+import { BuildRef, CodeLocation, PdfLocation, ProjectSummary, Tag } from './overleaf/types';
 import { HistoryUpdate, OverleafWebClient } from './overleaf/webClient';
 import { jsSearch } from './search/jsGrep';
 import { Chunk, LexicalHit, LexicalIndex, buildChunks } from './search/lexical';
@@ -19,18 +19,40 @@ import { StoredSession } from './store/credentials';
 import { DataPaths } from './store/paths';
 import { SettingsStore } from './store/settings';
 import { SnapshotCache } from './store/snapshotCache';
-import { mapLimit } from './util/concurrency';
+import { mapLimit, sleep } from './util/concurrency';
 import { OverleafError, errorMessage, notLoggedIn } from './util/errors';
 import { normalizeProjectPath, walkFiles, writeFileAtomic } from './util/fsx';
 import { Logger } from './util/log';
 import { unifiedDiff } from './util/unifiedDiff';
+
+export interface SignInRequest {
+  /** Browser sign-in unless a cookie is given. */
+  cookie?: string;
+  serverUrl?: string;
+}
 
 /** Supplies the Overleaf session; consulted before each operation so a new sign-in is picked up. */
 export interface SessionSource {
   load(): Promise<StoredSession | undefined>;
   /** Overleaf rotated cookies; persist them if this source owns storage. */
   save?(session: StoredSession): Promise<void>;
+  /** Signs in interactively and stores the result (lets AI clients sign in through a tool). */
+  signIn?(request: SignInRequest): Promise<StoredSession>;
 }
+
+/**
+ * SyncTeX names files relative to the main document's folder: with the main file at
+ * folder/main.tex, folder/intro.tex is known as folder/./intro.tex.
+ */
+export function synctexPath(filePath: string, rootPath?: string): string {
+  const slash = rootPath?.lastIndexOf('/') ?? -1;
+  const rootDir = slash > 0 ? rootPath!.slice(0, slash) : '';
+  if (rootDir && filePath.startsWith(`${rootDir}/`)) return `${rootDir}/.${filePath.slice(rootDir.length)}`;
+  return filePath;
+}
+
+/** Compile statuses that mean "try again in a moment". */
+const BUSY_COMPILE = new Set(['too-recently-compiled', 'compile-in-progress']);
 
 export interface ServiceOptions {
   paths: DataPaths;
@@ -576,21 +598,67 @@ export class OverleafService {
 
   async compile(
     ref: string | undefined,
-    options: { rootFile?: string; draft?: boolean; stopOnFirstError?: boolean; savePdfTo?: string } = {},
-  ): Promise<{ project: ProjectSummary; status: string; log: ParsedLog; bibtex: LogEntry[]; pdfPath?: string; logTail?: string; output: CompileOutput }> {
+    options: { rootFile?: string; draft?: boolean; stopOnFirstError?: boolean; savePdfTo?: string; fetchPdf?: boolean } = {},
+  ): Promise<{
+    project: ProjectSummary;
+    status: string;
+    log: ParsedLog;
+    bibtex: LogEntry[];
+    pdfPath?: string;
+    pdf?: Uint8Array;
+    logTail?: string;
+    rawLog?: string;
+    output: CompileOutput;
+  }> {
     const project = await this.resolveProject(ref);
     const backend = await this.backendFor(project);
-    if (!backend.compile) throw new OverleafError('UNSUPPORTED', 'Compiling needs the Overleaf web session (sign in from VS Code)');
-    const output = await backend.compile(project.id, { rootPath: options.rootFile, draft: options.draft, stopOnFirstError: options.stopOnFirstError });
+    if (!backend.compile) throw new OverleafError('UNSUPPORTED', 'Compiling needs the Overleaf web session (sign in first)');
+    const request = { rootPath: options.rootFile, draft: options.draft, stopOnFirstError: options.stopOnFirstError };
+    let output = await backend.compile(project.id, request);
+    // Overleaf turns away a compile that starts right after another one; wait and try again.
+    for (let attempt = 1; attempt <= 3 && BUSY_COMPILE.has(output.response.status); attempt++) {
+      await sleep(1500 * attempt);
+      output = await backend.compile(project.id, request);
+    }
     const log = output.log ? parseLatexLog(output.log) : { errors: [], warnings: [], typesetting: [] };
     const bibtex = output.bibtexLog ? parseBibtexLog(output.bibtexLog) : [];
+    let pdf: Uint8Array | undefined;
+    if ((options.savePdfTo || options.fetchPdf) && output.pdf) pdf = await output.pdf();
     let pdfPath: string | undefined;
-    if (options.savePdfTo && output.pdf) {
+    if (options.savePdfTo && pdf) {
       pdfPath = path.resolve(options.savePdfTo);
-      await writeFileAtomic(pdfPath, await output.pdf());
+      await writeFileAtomic(pdfPath, pdf);
     }
     const logTail = output.response.status !== 'success' && output.log && !log.errors.length ? output.log.split('\n').slice(-40).join('\n') : undefined;
-    return { project, status: output.response.status, log, bibtex, pdfPath, logTail, output };
+    return { project, status: output.response.status, log, bibtex, pdfPath, pdf: options.fetchPdf ? pdf : undefined, logTail, rawLog: output.log, output };
+  }
+
+  async stopCompile(ref: string | undefined): Promise<void> {
+    const project = await this.resolveProject(ref);
+    await (await this.sessionBackend()).stopCompile(project.id);
+  }
+
+  /** SyncTeX forward search: the PDF boxes a source line produced in the given build. */
+  async syncToPdf(ref: string | undefined, build: BuildRef, filePath: string, line: number, column: number, rootPath?: string): Promise<PdfLocation[]> {
+    const project = await this.resolveProject(ref);
+    const web = (await this.sessionBackend()).web;
+    return web.syncFromCode(project.id, build, synctexPath(normalizeProjectPath(filePath), rootPath), line, column);
+  }
+
+  /** SyncTeX inverse search: the source position behind a point in the PDF. */
+  async syncToCode(ref: string | undefined, build: BuildRef, page: number, h: number, v: number): Promise<CodeLocation | undefined> {
+    const project = await this.resolveProject(ref);
+    const web = (await this.sessionBackend()).web;
+    const [first] = await web.syncFromPdf(project.id, build, page, h, v);
+    return first ? { ...first, file: normalizeProjectPath(first.file) } : undefined;
+  }
+
+  /** Interactive sign-in through whatever the host provides (browser window, VS Code UI, …). */
+  async signIn(options: SignInRequest): Promise<StoredSession> {
+    if (!this.sessionSource.signIn) throw new OverleafError('UNSUPPORTED', 'This server cannot sign in by itself; sign in from VS Code or with `overleaf-live-mcp login --browser`.');
+    const session = await this.sessionSource.signIn(options);
+    this.projectList = undefined;
+    return session;
   }
 
   async history(ref: string | undefined, options: { limit?: number; path?: string } = {}): Promise<{ project: ProjectSummary; updates: HistoryUpdate[] }> {

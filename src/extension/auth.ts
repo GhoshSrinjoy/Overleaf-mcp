@@ -39,6 +39,16 @@ export class AuthManager implements vscode.Disposable {
         // Overleaf rotated cookies; keep the same login but store the fresh values.
         if (this.session && sessionKey(this.session) === sessionKey(session)) await this.persist(session, false);
       },
+      // An AI tool asked to sign in (sign_in over the local MCP endpoint): use the same flow as the panel.
+      signIn: async (request) => {
+        const serverUrl = request.serverUrl ? normalizeServerUrl(request.serverUrl) : this.serverUrl;
+        const method = request.cookie ? ('cookie' as const) : ('browser' as const);
+        const signedIn = request.cookie ? await signInWithCookie(serverUrl, request.cookie, this.logger) : await this.runSignIn('browser', serverUrl);
+        if (!signedIn) throw new Error('Sign-in was cancelled');
+        const session = { ...signedIn.session, method };
+        await this.persist(session);
+        return session;
+      },
     };
     this.disposables.push(
       this.changed,
@@ -147,8 +157,7 @@ export class AuthManager implements vscode.Disposable {
     }
   }
 
-  private async runSignIn(method: 'browser' | 'cookie' | 'password'): Promise<SignedInSession | undefined> {
-    const serverUrl = this.serverUrl;
+  private async runSignIn(method: 'browser' | 'cookie' | 'password', serverUrl = this.serverUrl): Promise<SignedInSession | undefined> {
     if (method === 'browser') {
       return vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'Sign in to Overleaf in the browser window that just opened…', cancellable: true },

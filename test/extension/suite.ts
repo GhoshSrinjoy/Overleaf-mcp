@@ -26,7 +26,7 @@ const tests: Array<[string, (api: OverleafExtensionApi) => Promise<void>]> = [
   }],
   ['registers its commands', async () => {
     const commands = await vscode.commands.getCommands(true);
-    for (const id of ['overleafMcp.signIn', 'overleafMcp.connectClient', 'overleafMcp.compile', 'overleafMcp.pinProject']) assert.ok(commands.includes(id), id);
+    for (const id of ['overleafMcp.signIn', 'overleafMcp.connectClient', 'overleafMcp.compile', 'overleafMcp.openPdfPreview', 'overleafMcp.syncToPdf', 'overleafMcp.pinProject']) assert.ok(commands.includes(id), id);
   }],
   ['lists projects in the side panel and expands one into files', async (api) => {
     const roots = await api.view.getChildren();
@@ -74,6 +74,45 @@ const tests: Array<[string, (api: OverleafExtensionApi) => Promise<void>]> = [
     assert.ok(files.tree.entries.some((e) => e.path === 'notes/todo.tex' && e.type === 'doc'));
     const listing = await vscode.workspace.fs.readDirectory(vscode.Uri.parse(`overleaf://${projectId}/notes`));
     assert.deepEqual(listing, [['todo.tex', vscode.FileType.File]]);
+  }],
+  ['compiles the project and draws the PDF in the preview', async (api) => {
+    const rendered = new Promise<{ pages: number }>((resolve) => {
+      const subscription = api.previews.onDidRender((event) => {
+        if (event.projectId !== projectId) return;
+        subscription.dispose();
+        resolve(event);
+      });
+    });
+    await vscode.commands.executeCommand('overleafMcp.openPdfPreview', vscode.Uri.parse(`overleaf://${projectId}/main.tex`));
+    const result = await Promise.race([rendered, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('the preview did not draw a PDF in time')), 120_000))]);
+    assert.ok(result.pages >= 1, `pages: ${result.pages}`);
+    assert.equal(api.compiler.get(projectId)?.status, 'success');
+    assert.ok(api.compiler.get(projectId)?.build?.editorId, 'the build is recorded for SyncTeX');
+  }],
+  ['finds a source line in the PDF and a PDF spot in the source (SyncTeX)', async (api) => {
+    const lines = (await api.service.readFile(projectId, 'main.tex')).content.text.split('\n');
+    // A line of body text: the first line starting with a letter after \begin{document}.
+    const begin = lines.findIndex((line) => line.includes('\\begin{document}'));
+    const index = lines.findIndex((line, i) => i > begin && /^[A-Za-z]/.test(line.trim()));
+    assert.ok(index > begin, 'expected body text in main.tex');
+    const locations = await api.previews.showInPdf({ projectId, path: 'main.tex', line: index + 1, column: 0 });
+    assert.ok(locations.length > 0, 'the line should be found in the PDF');
+    const [box] = locations;
+    const back = await api.service.syncToCode(projectId, api.compiler.get(projectId)!.build!, box.page, box.h + box.width / 2, box.v);
+    assert.equal(back?.file, 'main.tex');
+    assert.ok(back && back.line > begin, `line ${back?.line}`);
+  }],
+  ['recompiles by itself when the project changes', async (api) => {
+    const before = api.compiler.get(projectId)!.pdfVersion;
+    // An edit made through the MCP tools (same as an AI assistant would).
+    const text = (await api.service.readFile(projectId, 'main.tex')).content.text;
+    await api.service.writeFile(projectId, 'main.tex', text.replace('\\end{document}', 'Added for the automatic recompile test.\n\n\\end{document}'));
+    await waitFor(() => (api.compiler.get(projectId)?.pdfVersion ?? 0) > before && !api.compiler.isCompiling(projectId), 'an automatic recompile', 120_000);
+    // A compile must not set off another one by itself.
+    const settled = api.compiler.get(projectId)!.pdfVersion;
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    assert.equal(api.compiler.get(projectId)!.pdfVersion, settled, 'no further compiles without changes');
+    assert.equal(api.compiler.isCompiling(projectId), false);
   }],
   ['serves the MCP tools over the local HTTP endpoint', async (api) => {
     await waitFor(() => api.endpoint.state === 'hosting', 'the HTTP endpoint');

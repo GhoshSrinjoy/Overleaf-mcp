@@ -9,3 +9,5 @@ data/
 .vscode-test/
 dist-test/
 !test/unit/fixtures/*.log
+media/pdfjs/
+build/

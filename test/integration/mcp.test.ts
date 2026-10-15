@@ -52,6 +52,14 @@ describe.skipIf(!available)('MCP server end to end (stdio)', () => {
     expect(textOf(await call('status'))).toContain(`Signed in to ${SERVER_URL}`);
   });
 
+  it('signs in through the sign_in tool with a pasted session cookie', async () => {
+    const session = await testSession();
+    const result = await call('sign_in', { cookie: session.cookies, server: SERVER_URL });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toContain(`Signed in to ${SERVER_URL}`);
+    expect(textOf(await call('status'))).toContain(`Signed in to ${SERVER_URL}`);
+  });
+
   it('creates a project, pins it, and works without naming it', async () => {
     expect(textOf(await call('create_project', { name: projectName, template: 'example' }))).toContain(projectName);
     expect(textOf(await call('pin_projects', { projects: [projectName] }))).toContain(projectName);

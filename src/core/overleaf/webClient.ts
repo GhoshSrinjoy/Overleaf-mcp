@@ -4,10 +4,13 @@ import { OverleafError, notLoggedIn } from '../util/errors';
 import { Logger } from '../util/log';
 import { CookieJar } from './cookies';
 import {
+  BuildRef,
+  CodeLocation,
   CompileOutputFile,
   CompileResponse,
   EntityType,
   OverleafUserRef,
+  PdfLocation,
   ProjectSummary,
   RawFolder,
   SessionInfo,
@@ -510,7 +513,12 @@ export class OverleafWebClient {
 
   /* ---------------------------------- compile ---------------------------------- */
 
-  async compile(projectId: string, options: { rootDocId?: string; rootResourcePath?: string; draft?: boolean; stopOnFirstError?: boolean }): Promise<CompileResponse> {
+  /** Compiles on Overleaf. `editorId` identifies this viewer; SyncTeX lookups for the build must reuse it. */
+  async compile(
+    projectId: string,
+    options: { rootDocId?: string; rootResourcePath?: string; draft?: boolean; stopOnFirstError?: boolean; editorId?: string },
+  ): Promise<CompileResponse & { editorId: string }> {
+    const editorId = options.editorId ?? randomUUID();
     const response = await this.request('POST', `project/${projectId}/compile`, {
       query: { enable_pdf_caching: 'true' },
       json: {
@@ -520,12 +528,35 @@ export class OverleafWebClient {
         check: 'silent',
         incrementalCompilesEnabled: true,
         stopOnFirstError: options.stopOnFirstError ?? false,
-        editorId: randomUUID(),
+        editorId,
       },
       timeoutMs: 12 * 60_000,
       retries: 1,
     });
-    return this.json<CompileResponse>(response, 'Compiling the project');
+    return { ...(await this.json<CompileResponse>(response, 'Compiling the project')), editorId };
+  }
+
+  async stopCompile(projectId: string): Promise<void> {
+    const response = await this.request('POST', `project/${projectId}/compile/stop`, { retries: 0 });
+    await response.body?.cancel();
+  }
+
+  /** SyncTeX: where in the PDF a source position ended up. Positions are in PDF points from the page's top left. */
+  async syncFromCode(projectId: string, build: BuildRef, file: string, line: number, column: number): Promise<PdfLocation[]> {
+    const response = await this.request('GET', `project/${projectId}/sync/code`, {
+      query: { file, line, column, editorId: build.editorId, buildId: build.buildId, clsiserverid: build.clsiServerId },
+    });
+    const data = await this.json<{ pdf?: PdfLocation[] }>(response, 'Finding the position in the PDF');
+    return data.pdf ?? [];
+  }
+
+  /** SyncTeX: which source line produced a point in the PDF (h, v in points from the page's top left). */
+  async syncFromPdf(projectId: string, build: BuildRef, page: number, h: number, v: number): Promise<CodeLocation[]> {
+    const response = await this.request('GET', `project/${projectId}/sync/pdf`, {
+      query: { page, h: h.toFixed(2), v: v.toFixed(2), editorId: build.editorId, buildId: build.buildId, clsiserverid: build.clsiServerId },
+    });
+    const data = await this.json<{ code?: CodeLocation[] }>(response, 'Finding the source of that PDF position');
+    return data.code ?? [];
   }
 
   async downloadOutputFile(file: CompileOutputFile, compile: CompileResponse): Promise<Uint8Array> {

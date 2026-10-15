@@ -42,6 +42,9 @@ function withNotes(body: string, notes: string[]): string {
   return notes.length ? `${body}\n\nNotes:\n${notes.map((n) => `- ${n}`).join('\n')}` : body;
 }
 
+/** A browser sign-in that is still waiting for the person (shared by every client of this process). */
+let pendingBrowserSignIn: Promise<unknown> | undefined;
+
 let activeCalls = 0;
 const idleWaiters = new Set<() => void>();
 
@@ -98,6 +101,43 @@ export function registerTools(server: McpServer, service: OverleafService, logge
         `Data directory: ${status.dataDir}`,
       ];
       return text(lines.join('\n'));
+    }),
+  );
+
+  server.registerTool(
+    'sign_in',
+    {
+      title: 'Sign in to Overleaf',
+      description:
+        'Signs in to Overleaf so the other tools work. Without a cookie it opens the Overleaf login page in a browser window on this computer (Google, ORCID, institutional SSO and passwords all work) and waits for the person to log in. If the person gives you their overleaf_session2 cookie, pass it instead. Only needed once; the session is shared by every Overleaf tool on this computer.',
+      inputSchema: {
+        cookie: z.string().optional().describe('Session cookie value (or a whole Cookie header) the person supplied'),
+        server: z.string().optional().describe('Self-hosted Overleaf URL; default https://www.overleaf.com'),
+      },
+      annotations: { openWorldHint: true, destructiveHint: false },
+    },
+    guard(logger, 'sign_in', async (args) => {
+      if (!args.cookie && pendingBrowserSignIn) {
+        return text('A sign-in window is already open on this computer. Finish logging in there, then call status to confirm.');
+      }
+      const attempt = service.signIn({ cookie: args.cookie, serverUrl: args.server });
+      if (args.cookie) {
+        const session = await attempt;
+        return text(`Signed in to ${session.serverUrl} as ${session.email ?? session.userId}.`);
+      }
+      // Logging in can take longer than a client waits for a tool; keep going in the background.
+      pendingBrowserSignIn = attempt;
+      void attempt.then(
+        (session) => logger.info(`Signed in to ${session.serverUrl} as ${session.email ?? session.userId}`),
+        (error) => logger.warn('Browser sign-in did not complete', error),
+      ).finally(() => {
+        if (pendingBrowserSignIn === attempt) pendingBrowserSignIn = undefined;
+      });
+      const finished = await Promise.race([attempt, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 45_000).unref?.())]);
+      if (!finished) {
+        return text('The Overleaf login page is open in a browser window on this computer. Finish signing in there (the window closes by itself), then call status to confirm.');
+      }
+      return text(`Signed in to ${finished.serverUrl} as ${finished.email ?? finished.userId}.`);
     }),
   );
 
@@ -515,6 +555,7 @@ export function registerTools(server: McpServer, service: OverleafService, logge
 }
 
 export const SERVER_INSTRUCTIONS = `Tools for the user's Overleaf (LaTeX) projects, connected live to overleaf.com or a self-hosted Overleaf.
+- If a tool reports that nobody is signed in, call sign_in: it opens the Overleaf login page for the person.
 - Find projects with list_projects; refer to them by name or id. If exactly one project is pinned, "project" can be omitted.
 - Explore with list_files, get_outline, get_section and read_file. grep finds exact text or regexes across projects; search ranks passages by topic.
 - Edit with edit_file (exact oldText → newText; copy oldText from read_file without line numbers). Edits are live and merge with collaborators' typing.

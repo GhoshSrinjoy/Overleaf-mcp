@@ -1,8 +1,8 @@
 {
   "name": "overleaf-mcp",
   "displayName": "Overleaf MCP",
-  "description": "Sign in to Overleaf, browse, edit and sync all your projects from VS Code, and give AI assistants live search, read, edit and compile access through MCP.",
-  "version": "2.0.0",
+  "description": "Sign in to Overleaf, browse, edit, compile and preview all your projects in VS Code, and give AI assistants live search, read, edit and compile access through MCP.",
+  "version": "2.1.0",
   "publisher": "ghoshsrinjoy",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -24,7 +24,10 @@
     "latex",
     "mcp",
     "model context protocol",
-    "ai"
+    "ai",
+    "pdf",
+    "preview",
+    "synctex"
   ],
   "main": "./dist/extension.js",
   "bin": {
@@ -32,7 +35,8 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onFileSystem:overleaf"
+    "onFileSystem:overleaf",
+    "onWebviewPanel:overleafMcp.pdfPreview"
   ],
   "contributes": {
     "viewsContainers": {
@@ -166,9 +170,45 @@
       },
       {
         "command": "overleafMcp.compile",
-        "title": "Compile",
+        "title": "Compile and Show PDF",
         "category": "Overleaf",
         "icon": "$(play)"
+      },
+      {
+        "command": "overleafMcp.openPdfPreview",
+        "title": "Open PDF Preview",
+        "category": "Overleaf",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "overleafMcp.recompile",
+        "title": "Recompile",
+        "category": "Overleaf",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "overleafMcp.stopCompile",
+        "title": "Stop Compiling",
+        "category": "Overleaf",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "overleafMcp.syncToPdf",
+        "title": "Show in PDF",
+        "category": "Overleaf",
+        "icon": "$(target)"
+      },
+      {
+        "command": "overleafMcp.downloadPdf",
+        "title": "Download PDF…",
+        "category": "Overleaf",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "overleafMcp.showCompileLog",
+        "title": "Show Compile Log",
+        "category": "Overleaf",
+        "icon": "$(output)"
       },
       {
         "command": "overleafMcp.search",
@@ -301,7 +341,17 @@
           "group": "inline@2"
         },
         {
-          "command": "overleafMcp.compile",
+          "command": "overleafMcp.openPdfPreview",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "inline@3"
+        },
+        {
+          "command": "overleafMcp.openPdfPreview",
+          "when": "view == overleafMcp.projects && viewItem =~ /^project/",
+          "group": "1_project@1"
+        },
+        {
+          "command": "overleafMcp.downloadPdf",
           "when": "view == overleafMcp.projects && viewItem =~ /^project/",
           "group": "1_project@1"
         },
@@ -408,6 +458,56 @@
         {
           "command": "overleafMcp.stopSync",
           "when": "false"
+        },
+        {
+          "command": "overleafMcp.stopCompile",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.downloadPdf",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.showCompileLog",
+          "when": "overleafMcp.signedIn"
+        },
+        {
+          "command": "overleafMcp.syncToPdf",
+          "when": "overleafMcp.signedIn"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "overleafMcp.openPdfPreview",
+          "when": "resourceScheme == overleaf && resourceExtname =~ /^\\.(tex|ltx|bib|cls|sty|bbx|cbx|Rtex|Rnw)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overleafMcp.syncToPdf",
+          "when": "resourceScheme == overleaf && resourceExtname =~ /^\\.(tex|ltx|bib|cls|sty|bbx|cbx|Rtex|Rnw)$/",
+          "group": "1_overleaf@1"
+        },
+        {
+          "command": "overleafMcp.recompile",
+          "when": "activeWebviewPanelId == 'overleafMcp.pdfPreview'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overleafMcp.downloadPdf",
+          "when": "activeWebviewPanelId == 'overleafMcp.pdfPreview'",
+          "group": "1_overleaf@1"
+        },
+        {
+          "command": "overleafMcp.showCompileLog",
+          "when": "activeWebviewPanelId == 'overleafMcp.pdfPreview'",
+          "group": "1_overleaf@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "overleafMcp.syncToPdf",
+          "when": "resourceScheme == overleaf && resourceExtname =~ /^\\.(tex|ltx|bib|cls|sty|bbx|cbx|Rtex|Rnw)$/ && editorTextFocus",
+          "group": "navigation@90"
         }
       ]
     },
@@ -475,6 +575,22 @@
           "default": "",
           "markdownDescription": "Folder in which new local copies are created (default `~/Overleaf`).",
           "order": 51
+        },
+        "overleafMcp.pdf.autoCompile": {
+          "type": "string",
+          "enum": [
+            "onChange",
+            "onSave",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Recompile whenever the project changes: your saves, collaborators' edits and AI tools' edits.",
+            "Recompile when you save a file of the project in VS Code (Overleaf files and synced local copies).",
+            "Only compile when you press Recompile."
+          ],
+          "default": "onChange",
+          "markdownDescription": "When an open PDF preview recompiles by itself. Previews in background tabs catch up when they are shown again.",
+          "order": 40
         }
       }
     },
@@ -521,6 +637,17 @@
             },
             "completionEvents": [
               "onView:overleafMcp.projects"
+            ]
+          },
+          {
+            "id": "preview",
+            "title": "Compile and preview the PDF",
+            "description": "Compile on Overleaf and see the PDF next to your editor; it recompiles as you save. Double-click the PDF to jump to the source.\n[Open PDF Preview](command:overleafMcp.openPdfPreview)",
+            "media": {
+              "markdown": "media/walkthrough/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:overleafMcp.openPdfPreview"
             ]
           },
           {
@@ -571,7 +698,9 @@
     "package": "vsce package --no-dependencies",
     "vscode:prepublish": "node esbuild.mjs --production",
     "test:extension": "node esbuild.mjs --tests && node dist-test/run.js",
-    "test:vsix": "node esbuild.mjs --tests && vsce package --no-dependencies -o dist-test/overleaf-mcp.vsix && node dist-test/run.js dist-test/overleaf-mcp.vsix"
+    "test:vsix": "node esbuild.mjs --tests && vsce package --no-dependencies -o dist-test/overleaf-mcp.vsix && node dist-test/run.js dist-test/overleaf-mcp.vsix",
+    "package:server": "node scripts/package-server.mjs",
+    "package:release": "node scripts/package-server.mjs --vsix"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -585,6 +714,7 @@
     "esbuild": "^0.28.2",
     "fflate": "^0.8.3",
     "minisearch": "^7.2.0",
+    "pdfjs-dist": "6.3.289",
     "typescript": "^5.9.3",
     "vitest": "^5.0.4",
     "ws": "^8.22.0",

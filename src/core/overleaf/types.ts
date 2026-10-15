@@ -120,6 +120,28 @@ export interface CompileOutputFile {
   build?: string;
 }
 
+/** Identifies one compile's output, as SyncTeX lookups need it. */
+export interface BuildRef {
+  editorId: string;
+  buildId?: string;
+  clsiServerId?: string;
+}
+
+/** A box in the PDF (points, measured from the page's top left). */
+export interface PdfLocation {
+  page: number;
+  h: number;
+  v: number;
+  width: number;
+  height: number;
+}
+
+export interface CodeLocation {
+  file: string;
+  line: number;
+  column?: number;
+}
+
 export interface CompileResponse {
   status: string;
   outputFiles?: CompileOutputFile[];

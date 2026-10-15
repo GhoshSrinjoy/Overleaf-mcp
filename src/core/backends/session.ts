@@ -343,7 +343,17 @@ export class SessionBackend implements ProjectBackend {
       log: await fetchText('output.log'),
       bibtexLog: await fetchText('output.blg'),
       pdf: pdfFile ? () => this.web.downloadOutputFile(pdfFile, response) : undefined,
+      build: {
+        editorId: response.editorId,
+        buildId: (pdfFile ?? response.outputFiles?.[0])?.build,
+        clsiServerId: response.clsiServerId,
+      },
+      rootPath: rootDocId ? realtime.tree.pathOf(rootDocId) : undefined,
     };
+  }
+
+  stopCompile(projectId: string): Promise<void> {
+    return this.web.stopCompile(projectId);
   }
 
   historyUpdates(projectId: string, options: { minCount?: number; before?: number }) {
