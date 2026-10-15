@@ -28,12 +28,6 @@ Version 2 is a rewrite around a single, faster core:
 
 ---
 
-## Business Problem
-
-Overleaf is great for collaboration but closed to tooling: copy-pasting LaTeX into an assistant loses structure, and the Git bridge needs a paid plan, a token per project, and still can't tell you which projects you have. This project makes your whole Overleaf account browsable, editable, compilable and AI-accessible from your editor — without breaking collaborators' live sessions.
-
----
-
 ## Features
 
 ### VS Code extension
@@ -372,22 +366,6 @@ If you use this software in your research, please cite:
   url = {https://github.com/GhoshSrinjoy/Overleaf-mcp}
 }
 ```
-
-## Skills
-
-This project touches on: TypeScript, VS Code extension APIs (tree views, virtual file systems, webviews, secret storage, MCP registration), the Model Context Protocol, Overleaf's realtime protocol (socket.io 0.9) and operational transformation, pdf.js and SyncTeX, three-way merging, ripgrep and BM25 search, LaTeX log parsing, the Chrome DevTools Protocol, Git, Docker, and testing against a real Overleaf server.
-
----
-
-## Results & Business Recommendation
-
-### What it delivers
-
-- Every Overleaf project in your editor, editable live and previewed as a PDF, with collaborators unaffected.
-- AI assistants that can find, read, edit (or suggest), and compile across projects, installed in one step for each assistant.
-- No Redis, no per-project tokens, free plans included; Git tokens still work headless.
-
-**Recommendation:** Use the **VS Code extension** day to day (it signs in, keeps the panel live, previews the PDF and configures your assistants). Use the **single-file server, npm package or Claude Desktop bundle** where VS Code isn't involved, and **Docker or the CLI** on servers.
 
 ---
 
