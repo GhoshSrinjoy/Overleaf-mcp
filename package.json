@@ -700,7 +700,8 @@
     "test:extension": "node esbuild.mjs --tests && node dist-test/run.js",
     "test:vsix": "node esbuild.mjs --tests && vsce package --no-dependencies -o dist-test/overleaf-mcp.vsix && node dist-test/run.js dist-test/overleaf-mcp.vsix",
     "package:server": "node scripts/package-server.mjs",
-    "package:release": "node scripts/package-server.mjs --vsix"
+    "package:release": "node scripts/package-server.mjs --vsix",
+    "screenshots": "node esbuild.mjs --tests && node dist-test/run.js --screenshots"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

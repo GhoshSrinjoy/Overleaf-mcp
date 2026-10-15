@@ -9,6 +9,9 @@ A VS Code extension and MCP server for Overleaf. Sign in once, see **all** your 
 
 🔗 **Repo:** https://github.com/GhoshSrinjoy/Overleaf-mcp · ⬇️ **Downloads:** [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest)
 
+![VS Code with the Overleaf panel, a live Overleaf file and its PDF preview](assets/screenshots/overview.png)
+*Your Overleaf projects in the side panel, a file open live from Overleaf, and its PDF beside it.*
+
 ---
 
 ## Executive Summary
@@ -151,6 +154,15 @@ Right-click a project → **Open PDF Preview**, or click the preview button at t
 - **SyncTeX:** double-click anywhere in the PDF to open the source line that produced it. In the editor, right-click → **Show in PDF** highlights where the cursor's line ended up. Both also work for projects synced to a local folder.
 - Zoom (also `Ctrl` + mouse wheel), page number, **Save the PDF…**, **Open in your PDF viewer**, the raw compile log, and find (`Ctrl+F`).
 
+![Show in PDF: the selected paragraph highlighted in the PDF](assets/screenshots/synctex.png)
+*SyncTeX: the paragraph under the cursor, highlighted in the PDF.*
+
+![The compile options menu of the PDF preview](assets/screenshots/compile-options.png)
+*When to recompile, draft mode and stop on first error.*
+
+![A LaTeX error underlined in the editor, listed in the preview and in the Problems panel](assets/screenshots/errors.png)
+*An error from Overleaf's compile: underlined at its line, listed in the preview (click to jump) and in the Problems panel.*
+
 To give **Show in PDF** a shortcut, add to `keybindings.json`:
 
 ```json
@@ -162,6 +174,9 @@ To give **Show in PDF** a shortcut, add to `keybindings.json`:
 ## Connecting AI clients
 
 The extension installs a stable copy of the server at `~/.overleaf-mcp/server/overleaf-mcp.js` (it survives extension updates) and shares your sign-in with it through `~/.overleaf-mcp/credentials.json`. **Connect an AI Client…** writes the configuration for you:
+
+![The Connect an AI Client list, showing which assistants are installed](assets/screenshots/connect.png)
+*Pick one assistant, or set up every one found on the computer.*
 
 | Client | What the extension does |
 | --- | --- |
@@ -314,6 +329,7 @@ npm run typecheck
 npm test               # unit tests
 npm run package:server # build/release: overleaf-mcp.js, overleaf-live-mcp.tgz, overleaf-mcp.mcpb
 npm run package:release  # the same plus overleaf-mcp.vsix
+npm run screenshots    # retake the README screenshots (needs the local Overleaf below)
 ```
 
 Integration tests run against a local Overleaf Community Edition in Docker (nothing touches overleaf.com):

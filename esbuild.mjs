@@ -43,6 +43,7 @@ if (tests) {
   // In-editor test suite and its launcher (see test/extension).
   builds.push(
     { ...common, entryPoints: ['test/extension/suite.ts'], outfile: 'dist-test/suite.js', external: [...common.external, 'vscode'] },
+    { ...common, entryPoints: ['test/extension/screenshots.ts'], outfile: 'dist-test/screenshots.js', external: [...common.external, 'vscode'] },
     { ...common, entryPoints: ['test/extension/run.ts'], outfile: 'dist-test/run.js' },
   );
 }

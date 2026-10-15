@@ -10,13 +10,14 @@ import { McpEndpoint, installRipgrep, installServerCopy, registerWithVsCode } fr
 import { MirrorManager } from './mirrors';
 import { OverleafFileSystem, SCHEME } from './overleafFs';
 import { PdfPreviewManager } from './pdfPreview';
-import { ProjectsView } from './projectsView';
+import { Node, ProjectsView } from './projectsView';
 
 export interface OverleafExtensionApi {
   service: OverleafService;
   auth: AuthManager;
   endpoint: McpEndpoint;
   view: ProjectsView;
+  treeView: vscode.TreeView<Node>;
   mirrors: MirrorManager;
   compiler: CompileController;
   previews: PdfPreviewManager;
@@ -111,7 +112,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Overle
   void installRipgrep(paths, service, logger).catch((error) => logger.warn('ripgrep setup failed; the built-in search will be used', error));
   if (auth.current) void mirrors.resumeAll().catch((error) => logger.warn('Could not resume local syncs', error));
 
-  return { service, auth, endpoint, view, mirrors, compiler, previews };
+  return { service, auth, endpoint, view, treeView, mirrors, compiler, previews };
 }
 
 export function deactivate(): void {
