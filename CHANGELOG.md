@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1
+
+### Fixed
+- Choosing when the PDF preview recompiles no longer fails with "not a registered configuration" right after the extension was updated and before VS Code was reloaded; the choice is kept and applied.
+
 ## 2.1.0
 
 ### Added

@@ -114,6 +114,13 @@ const tests: Array<[string, (api: OverleafExtensionApi) => Promise<void>]> = [
     assert.equal(api.compiler.get(projectId)!.pdfVersion, settled, 'no further compiles without changes');
     assert.equal(api.compiler.isCompiling(projectId), false);
   }],
+  ['saves the auto-compile choice made in the preview', async (api) => {
+    await api.previews.setAutoCompile('onSave');
+    assert.equal(api.previews.autoCompileMode(), 'onSave');
+    assert.equal(vscode.workspace.getConfiguration('overleafMcp').get('pdf.autoCompile'), 'onSave');
+    await api.previews.setAutoCompile('onChange');
+    assert.equal(api.previews.autoCompileMode(), 'onChange');
+  }],
   ['serves the MCP tools over the local HTTP endpoint', async (api) => {
     await waitFor(() => api.endpoint.state === 'hosting', 'the HTTP endpoint');
     const client = new Client({ name: 'extension-test', version: '1.0.0' });

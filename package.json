@@ -2,7 +2,7 @@
   "name": "overleaf-mcp",
   "displayName": "Overleaf MCP",
   "description": "Sign in to Overleaf, browse, edit, compile and preview all your projects in VS Code, and give AI assistants live search, read, edit and compile access through MCP.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "publisher": "ghoshsrinjoy",
   "icon": "media/icon.png",
   "license": "MIT",

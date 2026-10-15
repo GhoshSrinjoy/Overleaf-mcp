@@ -20,8 +20,10 @@ const LOG_SCHEME = 'overleaf-log';
 
 export type AutoCompile = 'onChange' | 'onSave' | 'off';
 
-export function autoCompileMode(): AutoCompile {
-  const value = config().get<string>('pdf.autoCompile', 'onChange');
+/** The preview's choice when it could not be saved as a setting (see setAutoCompile). */
+const AUTO_COMPILE_FALLBACK = 'overleafMcp.pdf.autoCompile';
+
+function asAutoCompile(value: string | undefined): AutoCompile {
   return value === 'onSave' || value === 'off' ? value : 'onChange';
 }
 
@@ -124,9 +126,30 @@ export class PdfPreviewManager implements vscode.Disposable, vscode.WebviewPanel
       // A local copy was saved and the sync sent it to Overleaf.
       mirrors.onDidPushLocalChanges((projectId) => this.projectChanged(projectId, 'save')),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('overleafMcp.pdf')) for (const entry of this.panels.values()) this.post(entry);
+        if (!event.affectsConfiguration('overleafMcp.pdf')) return;
+        // A setting changed by hand replaces a choice the preview had to keep for itself.
+        if (event.affectsConfiguration('overleafMcp.pdf.autoCompile')) void this.context.globalState.update(AUTO_COMPILE_FALLBACK, undefined);
+        for (const entry of this.panels.values()) this.post(entry);
       }),
     );
+  }
+
+  /** When previews recompile by themselves (the `overleafMcp.pdf.autoCompile` setting). */
+  autoCompileMode(): AutoCompile {
+    return asAutoCompile(this.context.globalState.get<string>(AUTO_COMPILE_FALLBACK) ?? config().get<string>('pdf.autoCompile'));
+  }
+
+  async setAutoCompile(value: AutoCompile): Promise<void> {
+    try {
+      await config().update('pdf.autoCompile', value, vscode.ConfigurationTarget.Global);
+      await this.context.globalState.update(AUTO_COMPILE_FALLBACK, undefined);
+    } catch (error) {
+      // VS Code only learns new settings when the window reloads, so right after an update
+      // the setting can't be written yet. Keep the choice here instead.
+      this.logger.info(`Keeping the auto-compile choice without the setting: ${errorMessage(error)}`);
+      await this.context.globalState.update(AUTO_COMPILE_FALLBACK, value);
+    }
+    for (const entry of this.panels.values()) this.post(entry);
   }
 
   /** Project of the preview that has focus, if any. */
@@ -238,7 +261,7 @@ export class PdfPreviewManager implements vscode.Disposable, vscode.WebviewPanel
   private projectChanged(projectId: string, kind: 'change' | 'save'): void {
     const entry = this.panels.get(projectId);
     if (!entry) return;
-    const mode = autoCompileMode();
+    const mode = this.autoCompileMode();
     if (mode === 'off' || (mode === 'onSave' && kind !== 'save')) return;
     if (!entry.panel.visible) {
       entry.stale = true;
@@ -269,7 +292,7 @@ export class PdfPreviewManager implements vscode.Disposable, vscode.WebviewPanel
       errors: (snapshot?.errors ?? []).map(problem),
       warnings: (snapshot?.warnings ?? []).map(problem),
       typesetting: snapshot?.typesetting.length ?? 0,
-      autoCompile: autoCompileMode(),
+      autoCompile: this.autoCompileMode(),
       draft: !!options.draft,
       stopOnFirstError: !!options.stopOnFirstError,
     });
@@ -303,7 +326,7 @@ export class PdfPreviewManager implements vscode.Disposable, vscode.WebviewPanel
           void this.compiler.compile(entry.projectId);
           return;
         case 'autoCompile':
-          await config().update('pdf.autoCompile', message.value, vscode.ConfigurationTarget.Global);
+          await this.setAutoCompile(asAutoCompile(message.value));
           return;
         case 'syncToCode':
           await this.syncToCode(entry.projectId, message.page, message.h, message.v);

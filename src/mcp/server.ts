@@ -4,7 +4,7 @@ import { Logger } from '../core/util/log';
 import { SERVER_INSTRUCTIONS, registerTools } from './tools';
 
 export const SERVER_NAME = 'overleaf';
-export const SERVER_VERSION = '2.1.0';
+export const SERVER_VERSION = '2.1.1';
 
 /** One MCP server instance (cheap: the service and its live connections are shared). */
 export function createMcpServer(service: OverleafService, logger: Logger): McpServer {
