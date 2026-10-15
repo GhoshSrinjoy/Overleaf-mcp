@@ -52,7 +52,7 @@ Overleaf is great for collaboration but closed to tooling: copy-pasting LaTeX in
 
 ## Install
 
-Everything is on the [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest):
+Everything is on the [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest). You don't need to clone this repository; that is only for [building from source](#from-source).
 
 | File | For |
 | --- | --- |
@@ -63,9 +63,19 @@ Everything is on the [latest release](https://github.com/GhoshSrinjoy/Overleaf-m
 
 ### VS Code
 
-```bash
-code --install-extension overleaf-mcp.vsix      # or Extensions view → … → Install from VSIX…
+Download and install in one step:
+
+```powershell
+# Windows (PowerShell)
+Invoke-WebRequest https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest/download/overleaf-mcp.vsix -OutFile "$env:TEMP\overleaf-mcp.vsix"; code --install-extension "$env:TEMP\overleaf-mcp.vsix"
 ```
+
+```bash
+# macOS / Linux
+curl -fsSL -o /tmp/overleaf-mcp.vsix https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest/download/overleaf-mcp.vsix && code --install-extension /tmp/overleaf-mcp.vsix
+```
+
+Or without a terminal: download `overleaf-mcp.vsix` from the [latest release](https://github.com/GhoshSrinjoy/Overleaf-mcp/releases/latest), then in VS Code open the Extensions view → `…` menu → **Install from VSIX…** and pick the file. If VS Code was already open, run **Developer: Reload Window** afterwards. (On macOS, if `code` is not found, run **Shell Command: Install 'code' command in PATH** in VS Code first.)
 
 Then click the **Overleaf** icon in the activity bar → **Sign in**. A browser window opens on the Overleaf login page; log in as usual and it closes by itself. Your projects appear in the panel. To give other assistants access, open the panel menu (`…`) → **Connect an AI Client…** and pick one, or **Every AI tool found on this computer**.
 
@@ -113,7 +123,11 @@ copilot mcp add overleaf '--' node "$HOME\.overleaf-mcp\server\overleaf-mcp.js"
 
 ### From source
 
+Only needed if you want to change the code or build the files yourself:
+
 ```bash
+git clone https://github.com/GhoshSrinjoy/Overleaf-mcp.git
+cd Overleaf-mcp
 npm install
 npm run package                      # creates overleaf-mcp-<version>.vsix
 code --install-extension overleaf-mcp-2.1.0.vsix
