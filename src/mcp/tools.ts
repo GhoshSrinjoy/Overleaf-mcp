@@ -145,14 +145,15 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'list_projects',
     {
       title: 'List Overleaf projects',
-      description: 'Lists the projects in the Overleaf account (newest first, pinned first), with ids, last update, owner, access level and tags.',
+      description:
+        'Lists the projects in the signed-in Overleaf account, pinned first and then newest first, with each project\'s id, last update, owner, access level and tags. Read-only; needs a web sign-in (see sign_in) and keeps the list for 30 seconds. Use it to find the name or id that other tools take as "project"; list_files shows the files inside one project.',
       inputSchema: {
-        query: z.string().optional().describe('Only projects whose name contains this text'),
-        tag: z.string().optional().describe('Only projects in this Overleaf tag/folder'),
-        includeArchived: z.boolean().optional(),
-        includeTrashed: z.boolean().optional(),
-        limit: z.number().int().min(1).max(500).optional().describe('Default 50'),
-        refresh: z.boolean().optional().describe('Bypass the 30-second project list cache'),
+        query: z.string().optional().describe('Only projects whose name contains this text (any case), or whose id is exactly this'),
+        tag: z.string().optional().describe('Only projects with this Overleaf tag (the folders in Overleaf\'s project list)'),
+        includeArchived: z.boolean().optional().describe('Also list archived projects (default false)'),
+        includeTrashed: z.boolean().optional().describe('Also list projects in the trash (default false)'),
+        limit: z.number().int().min(1).max(500).optional().describe('How many projects to show (default 50)'),
+        refresh: z.boolean().optional().describe('Ask Overleaf again instead of using the list kept for 30 seconds'),
       },
       annotations: readOnly,
     },
@@ -166,10 +167,11 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'pin_projects',
     {
       title: 'Pin projects for AI work',
-      description: 'Pins (or unpins) projects. Pinned projects are the default scope for grep/search, and a single pinned project lets other tools omit "project". Pins are shared with the VS Code panel.',
+      description:
+        'Pins or unpins projects; other pins stay as they are. Pinned projects are the default scope for grep and search, and while exactly one project is pinned, other tools can leave out "project". Pins are saved on this computer and shared with the VS Code panel; nothing changes on Overleaf. Pin the paper you are working on at the start, so later calls need no project.',
       inputSchema: {
-        projects: z.array(z.string()).min(1).describe('Project names or ids'),
-        unpin: z.boolean().optional().describe('Remove the pins instead of adding them'),
+        projects: z.array(z.string()).min(1).describe('Names or ids of the projects to pin or unpin, as shown by list_projects'),
+        unpin: z.boolean().optional().describe('Remove these pins instead of adding them (default false)'),
       },
       annotations: { idempotentHint: true, openWorldHint: false },
     },
@@ -183,10 +185,11 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'create_project',
     {
       title: 'Create an Overleaf project',
-      description: 'Creates a new Overleaf project, either blank (with an empty main.tex) or from Overleaf\'s example template.',
+      description:
+        'Creates a new project in the signed-in Overleaf account (needs a web sign-in) and returns its name and id. "blank" starts with an empty main.tex; "example" starts from Overleaf\'s example document. Fill it afterwards with write_file, upload_file and create_folder.',
       inputSchema: {
-        name: z.string().min(1).max(150),
-        template: z.enum(['blank', 'example']).optional().describe('Default blank'),
+        name: z.string().min(1).max(150).describe('Name of the new project, up to 150 characters'),
+        template: z.enum(['blank', 'example']).optional().describe('"blank" (default) for an empty main.tex, or "example" for Overleaf\'s example document'),
       },
       annotations: { openWorldHint: true },
     },
@@ -200,7 +203,8 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'list_files',
     {
       title: 'List project files',
-      description: 'Shows the file tree of a project, marking the main document. Docs are editable text; "binary/uploaded" files are images, PDFs and other uploads.',
+      description:
+        'Shows the file and folder tree of one project and marks the main document. Docs are editable text (read_file, edit_file); "binary/uploaded" files are images, PDFs and other uploads (download_file). Read-only. Use it to get exact paths before reading or editing; get_outline shows the section structure instead.',
       inputSchema: { project },
       annotations: readOnly,
     },
@@ -217,12 +221,12 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     {
       title: 'Read a project file',
       description:
-        'Reads a file live from Overleaf (always the latest content, including collaborators\' unsaved typing). Optionally a line range. Images (png/jpg/gif/webp) are returned as images.',
+        'Reads a file live from Overleaf (always the latest content, including collaborators\' unsaved typing). Optionally a line range. Images (png/jpg/gif/webp) are returned as images. Read-only. To read one section by its title use get_section; for other binary files use download_file.',
       inputSchema: {
         project,
         path: z.string().describe('File path inside the project, e.g. "main.tex" or "sections/intro.tex"'),
-        startLine: z.number().int().min(1).optional(),
-        endLine: z.number().int().min(1).optional(),
+        startLine: z.number().int().min(1).optional().describe('First line to return, counting from 1 (default: the first line)'),
+        endLine: z.number().int().min(1).optional().describe('Last line to return, inclusive (default: the last line)'),
         lineNumbers: z.boolean().optional().describe('Prefix lines with their numbers (do not copy these into edits)'),
       },
       annotations: readOnly,
@@ -271,13 +275,13 @@ export function registerTools(server: McpServer, service: OverleafService, logge
       inputSchema: {
         query: z.string().min(1).describe('Text to find, or a regex when regex is true'),
         projects,
-        regex: z.boolean().optional(),
+        regex: z.boolean().optional().describe('Treat query as a regular expression (default false: plain text)'),
         caseSensitive: z.boolean().optional().describe('Default: smart case (case-insensitive unless the query has capitals)'),
-        wholeWord: z.boolean().optional(),
+        wholeWord: z.boolean().optional().describe('Only match whole words (default false)'),
         include: z.array(z.string()).optional().describe('Glob patterns of files to search, e.g. ["*.tex"] or ["chapters/**"]'),
-        exclude: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).optional().describe('Glob patterns of files to skip, e.g. ["*.bib"]'),
         contextLines: z.number().int().min(0).max(10).optional().describe('Lines of context around each match (default 1)'),
-        maxResults: z.number().int().min(1).max(2000).optional().describe('Default 100'),
+        maxResults: z.number().int().min(1).max(2000).optional().describe('Most matches to return (default 100)'),
         refresh: z.boolean().optional().describe('Re-download the projects before searching'),
       },
       annotations: readOnly,
@@ -294,13 +298,13 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     {
       title: 'Ranked search across projects',
       description:
-        'Relevance-ranked full-text search (BM25 with fuzzy and prefix matching) that finds passages about a topic, e.g. "related work on diffusion models", across one or many projects. Returns file:line ranges with snippets; read_file or get_section can then fetch the text.',
+        'Relevance-ranked full-text search (BM25 with fuzzy and prefix matching) that finds passages about a topic, e.g. "related work on diffusion models", across one or many projects. Returns file:line ranges with snippets; read_file or get_section can then fetch the text. Read-only. For exact text or a regex use grep instead.',
       inputSchema: {
-        query: z.string().min(1),
+        query: z.string().min(1).describe('What to look for, in words, e.g. "evaluation metrics"'),
         projects,
-        limit: z.number().int().min(1).max(100).optional().describe('Default 10'),
+        limit: z.number().int().min(1).max(100).optional().describe('How many passages to return (default 10)'),
         matchAll: z.boolean().optional().describe('Require every query word to appear'),
-        refresh: z.boolean().optional(),
+        refresh: z.boolean().optional().describe('Re-download the projects before searching'),
       },
       annotations: readOnly,
     },
@@ -314,7 +318,8 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'get_outline',
     {
       title: 'Document outline',
-      description: 'Outline of a LaTeX project (parts, chapters, sections, …) following \\input/\\include from the main document, with file:line for each heading.',
+      description:
+        'Outline of a LaTeX project (parts, chapters, sections, …) following \\input/\\include from the main document, with file:line for each heading and a note on included files that are missing. Read-only. Use it to see a paper\'s structure or find where a section lives; then get_section reads one section, or read_file reads the lines.',
       inputSchema: {
         project,
         rootFile: z.string().optional().describe('Start from this file instead of the project\'s main document'),
@@ -331,11 +336,12 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'get_section',
     {
       title: 'Read one section',
-      description: 'Returns the LaTeX of one section (up to the next heading of the same or higher level), found by title anywhere in the document.',
+      description:
+        'Returns the LaTeX of one section (up to the next heading of the same or higher level), found by title anywhere in the document, with its file and line range. Read-only. Use it to read a section without the whole file (get_outline lists the titles); to change it, copy text from here into edit_file.',
       inputSchema: {
         project,
         title: z.string().min(1).describe('Section title, matched case-insensitively (exact first, then unique partial match)'),
-        file: z.string().optional().describe('Look only in this file'),
+        file: z.string().optional().describe('Only look in this file, e.g. "sections/intro.tex"'),
       },
       annotations: readOnly,
     },
@@ -348,7 +354,7 @@ export function registerTools(server: McpServer, service: OverleafService, logge
   const editSchema = z.object({
     oldText: z.string().min(1).describe('Exact existing text to replace (copy it from read_file; must be unique unless replaceAll)'),
     newText: z.string().describe('Replacement text'),
-    replaceAll: z.boolean().optional(),
+    replaceAll: z.boolean().optional().describe('Replace every occurrence of oldText instead of requiring exactly one (default false)'),
   });
 
   server.registerTool(
@@ -356,10 +362,10 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     {
       title: 'Edit a file',
       description:
-        'Applies exact search-and-replace edits to a file, live: collaborators see the change instantly and concurrent typing is merged, not overwritten. All edits apply together or not at all. With suggest=true the edits become tracked changes the author can accept or reject in Overleaf\'s review panel.',
+        'Applies exact search-and-replace edits to a file, live: collaborators see the change instantly and concurrent typing is merged, not overwritten. All edits apply together or not at all, and Overleaf records them in the project history. With suggest=true the edits become tracked changes the author can accept or reject in Overleaf\'s review panel. Use it for targeted changes; write_file replaces a whole file.',
       inputSchema: {
         project,
-        path: z.string(),
+        path: z.string().describe('Path of the doc to edit, e.g. "main.tex"'),
         edits: z.array(editSchema).min(1).describe('Applied in order, each to the result of the previous one'),
         suggest: z.boolean().optional().describe('Record as tracked changes (suggestions) instead of direct edits'),
         dryRun: z.boolean().optional().describe('Show the diff without changing anything'),
@@ -383,8 +389,8 @@ export function registerTools(server: McpServer, service: OverleafService, logge
         'Writes the full content of a text file, creating it (and missing folders) if needed. Existing docs are updated in place via a minimal live diff, so collaborators keep their cursors. Prefer edit_file for small changes.',
       inputSchema: {
         project,
-        path: z.string(),
-        content: z.string(),
+        path: z.string().describe('Path of the text file, e.g. "sections/intro.tex"; missing folders are created'),
+        content: z.string().describe('The complete new content of the file'),
         overwrite: z.boolean().optional().describe('Set false to refuse replacing an existing file (default true)'),
         suggest: z.boolean().optional().describe('Record changes to an existing doc as tracked changes'),
       },
@@ -403,8 +409,9 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'delete_file',
     {
       title: 'Delete a file or folder',
-      description: 'Deletes a file or folder (with its contents) from a project. Overleaf keeps it in project history.',
-      inputSchema: { project, path: z.string() },
+      description:
+        'Deletes a file or folder (with its contents) from a project, for every collaborator. These tools cannot undo it, but Overleaf keeps the deleted content in the project history. To rename or reorganise, use move_file instead.',
+      inputSchema: { project, path: z.string().describe('Path of the file or folder to delete, e.g. "figures/old-plot.png"') },
       annotations: { destructiveHint: true, openWorldHint: true },
     },
     guard(logger, 'delete_file', async (args) => {
@@ -417,8 +424,13 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'move_file',
     {
       title: 'Move or rename',
-      description: 'Moves and/or renames a file or folder inside a project, creating target folders as needed.',
-      inputSchema: { project, from: z.string(), to: z.string() },
+      description:
+        'Moves and/or renames a file or folder inside one project, creating missing target folders. Fails if something already exists at the target path; nothing is overwritten. References in the LaTeX (\\input, \\includegraphics) are not updated, so fix them with edit_file afterwards. Use it rather than writing a copy and deleting the original.',
+      inputSchema: {
+        project,
+        from: z.string().describe('Current path of the file or folder, e.g. "plot.png"'),
+        to: z.string().describe('New path, e.g. "figures/plot.png"; a different last part renames it'),
+      },
       annotations: { destructiveHint: false, openWorldHint: true },
     },
     guard(logger, 'move_file', async (args) => {
@@ -431,8 +443,9 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'create_folder',
     {
       title: 'Create a folder',
-      description: 'Creates a folder (and any missing parents) in a project.',
-      inputSchema: { project, path: z.string() },
+      description:
+        'Creates a folder, and any missing parent folders, in one project. Does nothing if the folder already exists; fails if a file has that path. Rarely needed: write_file, upload_file and move_file create missing folders themselves. Projects reached through a Git token cannot hold empty folders.',
+      inputSchema: { project, path: z.string().describe('Folder path inside the project, e.g. "figures/plots"') },
       annotations: { idempotentHint: true, openWorldHint: true },
     },
     guard(logger, 'create_folder', async (args) => {
@@ -445,7 +458,8 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'upload_file',
     {
       title: 'Upload a local file',
-      description: 'Uploads a file from this computer (e.g. a generated figure or .bib) into a project, replacing any file with the same path.',
+      description:
+        'Uploads a file from this computer (e.g. a generated figure or .bib) into a project, replacing any file with the same path. For text you already have, write_file is simpler; download_file goes the other way.',
       inputSchema: {
         project,
         localPath: z.string().describe('Absolute path of the file on this computer'),
@@ -465,11 +479,12 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'download_file',
     {
       title: 'Download a project file',
-      description: 'Saves a project file (any type) to a path on this computer.',
+      description:
+        'Saves a copy of one project file of any type (PDF, image, .bib, .tex) to a path on this computer, creating missing local folders and replacing a file already at that path. Changes nothing on Overleaf. Use it for binary files that read_file cannot show as text, or to work on a file with local tools; for the compiled PDF use compile with savePdfTo.',
       inputSchema: {
         project,
-        path: z.string(),
-        localPath: z.string().describe('Absolute destination path on this computer'),
+        path: z.string().describe('Path of the file inside the project, e.g. "figures/plot.pdf"'),
+        localPath: z.string().describe('Absolute path on this computer to save to, including the file name'),
       },
       annotations: { readOnlyHint: false, openWorldHint: true },
     },
@@ -492,9 +507,9 @@ export function registerTools(server: McpServer, service: OverleafService, logge
         project,
         rootFile: z.string().optional().describe('Compile this file instead of the main document'),
         draft: z.boolean().optional().describe('Faster draft mode (no images)'),
-        stopOnFirstError: z.boolean().optional(),
+        stopOnFirstError: z.boolean().optional().describe('Stop at the first LaTeX error instead of compiling as far as possible'),
         savePdfTo: z.string().optional().describe('Absolute local path to save output.pdf to'),
-        maxWarnings: z.number().int().min(0).max(200).optional().describe('Default 15'),
+        maxWarnings: z.number().int().min(0).max(200).optional().describe('How many warnings to list (default 15)'),
       },
       // Not read-only: savePdfTo writes a file on this computer.
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -522,8 +537,8 @@ export function registerTools(server: McpServer, service: OverleafService, logge
       description: 'Recent changes recorded in Overleaf\'s project history: versions, authors, times and touched files. Use history_diff to see what changed between versions.',
       inputSchema: {
         project,
-        limit: z.number().int().min(1).max(200).optional().describe('Default 20'),
-        path: z.string().optional().describe('Only changes touching this file'),
+        limit: z.number().int().min(1).max(200).optional().describe('How many changes to show, newest first (default 20)'),
+        path: z.string().optional().describe('Only changes touching this file, e.g. "main.tex"'),
       },
       annotations: readOnly,
     },
@@ -537,12 +552,13 @@ export function registerTools(server: McpServer, service: OverleafService, logge
     'history_diff',
     {
       title: 'Diff between versions',
-      description: 'Unified diff of one file between two history versions (from the history tool\'s vFrom→vTo numbers).',
+      description:
+        'Unified diff of one file between two history versions (from the history tool\'s vFrom→vTo numbers), e.g. to review what a collaborator changed. Read-only; binary files have no text diff.',
       inputSchema: {
         project,
-        path: z.string(),
-        fromVersion: z.number().int().min(0),
-        toVersion: z.number().int().min(0),
+        path: z.string().describe('Path of the file inside the project, e.g. "main.tex"'),
+        fromVersion: z.number().int().min(0).describe('Older version number, from history'),
+        toVersion: z.number().int().min(0).describe('Newer version number, from history'),
       },
       annotations: readOnly,
     },
